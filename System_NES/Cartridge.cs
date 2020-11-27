@@ -92,6 +92,9 @@ namespace System_NES
 
                 int prgSize = prgBankCount * 16384;
                 int chrSize = chrBankCount * 8192;
+                if (chrSize == 0)
+                    chrSize = 8192; // Cartridge has RAM?
+
                 prgData = new byte[prgSize];
                 reader.Read(prgData, 0, prgSize);
                 chrData = new byte[chrSize];
@@ -100,6 +103,8 @@ namespace System_NES
                 switch (mapperId)
                 {
                     case 0: mapper = new Mapper000(prgBankCount, chrBankCount); break;
+                    default:
+                        throw new NotImplementedException("Mapper " + mapperId + " is not implemented");
                 }
             }
         }
@@ -115,17 +120,17 @@ namespace System_NES
         #region IBusComponent_16 implementation
         public void WriteDataFromBus(ushort address, byte data)
         {
-            //if (address >= 0x8000 && address <= 0xFFFF)
-            //    prgData[mapper.MapCPUAddress(address)] = data;
+            //if (mapper.MapCPUAddressWrite(address, out uint newAddress))
+            //    prgData[newAddress] = data;
         }
 
         public byte ReadDataForBus(ushort address)
         {
-            if (mapper.MapCPUAddress(address, out ushort newAddress))
+            if (mapper.MapCPUAddressRead(address, out uint newAddress))
                 return prgData[newAddress];
 
-            if (address >= 0x7000 && address <= 0x71FF)
-                return trainerData?[address - 0x7000] ?? 0;
+            //if (address >= 0x7000 && address <= 0x71FF)
+            //    return trainerData?[address - 0x7000] ?? 0;
 
             return 0;
         }
@@ -133,7 +138,7 @@ namespace System_NES
 
         public bool WritePPUData(ushort address, byte data)
         {
-            if (mapper.MapPPUAddress(address, out ushort newAddress))
+            if (mapper.MapPPUAddressWrite(address, out uint newAddress))
             {
                 chrData[newAddress] = data;
                 return true;
@@ -144,7 +149,7 @@ namespace System_NES
 
         public bool ReadPPUData(ushort address, out byte data)
         {
-            if (mapper.MapPPUAddress(address, out ushort newAddress))
+            if (mapper.MapPPUAddressRead(address, out uint newAddress))
             {
                 data = chrData[newAddress];
                 return true;

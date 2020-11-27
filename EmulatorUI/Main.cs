@@ -16,6 +16,7 @@ namespace EmulatorUI
             debugToolStripMenuItem.Visible = false;
             startEmulationToolStripMenuItem.Enabled = false;
             stopEmulationToolStripMenuItem.Enabled = false;
+            displayOutput.SmoothPixels = false;
         }
 
         private void nintendoEntertainmentSystemNESToolStripMenuItem_Click(object sender, EventArgs e)
@@ -28,6 +29,7 @@ namespace EmulatorUI
             foreach (IDisplay display in loadedSystem.OtherDisplayableComponents)
             {
                 DebugForm debugDisplay = new DebugForm(display);
+                debugDisplay.Scale = 3;
                 debugDisplay.Show(this);
             }
             

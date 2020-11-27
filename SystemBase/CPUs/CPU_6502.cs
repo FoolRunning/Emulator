@@ -38,16 +38,15 @@ namespace SystemBase.CPUs
         private readonly Op interruptOp;
         private readonly Op interruptNMIOp;
         private readonly Op[] opCodes;
-        private readonly SystemClock clock;
+        private readonly IClock clock;
         private readonly Bus_16 bus;
         private readonly Thread cpuThread;
-        private readonly int clockDivisor;
         private long totalTicks;
         private volatile int ticksToRun;
         private volatile bool run;
+        private volatile bool enabled = true;
         private volatile InterruptType interruptRequested = InterruptType.None;
         private volatile bool resetRequested;
-        private int clockCount;
 
         /// <summary>The current instruction being run.</summary>
         private Op currentInstruction;
@@ -63,15 +62,10 @@ namespace SystemBase.CPUs
         #endregion
 
         #region Constructor
-        public CPU_6502(SystemClock clock, Bus_16 bus, int clockDivisor)
+        public CPU_6502(IClock clock, Bus_16 bus)
         {
-            if (clockDivisor <= 0)
-                throw new ArgumentException("clockDivisor not valid");
-
             this.clock = clock ?? throw new ArgumentNullException(nameof(clock));
             this.bus = bus ?? throw new ArgumentNullException(nameof(bus));
-            this.clockDivisor = clockDivisor;
-            clockCount = clockDivisor;
 
             resetOp = new Op(Reset, IMP);
             interruptOp = new Op(Interrupt, IMP);
@@ -98,7 +92,7 @@ namespace SystemBase.CPUs
             };
             
             run = true;
-            currentInstruction = opCodes[0xEA];
+            currentInstruction = opCodes[0xEA]; // NOP
             cpuThread = new Thread(CPULoop);
             cpuThread.IsBackground = true;
             cpuThread.Name = "CPU";
@@ -144,6 +138,16 @@ namespace SystemBase.CPUs
         {
             interruptRequested = InterruptType.NonMaskable;
         }
+
+        public void Pause()
+        {
+            enabled = false;
+        }
+
+        public void Resume()
+        {
+            enabled = true;
+        }
         #endregion
 
         #region IBusComponent_16 implementation
@@ -161,15 +165,13 @@ namespace SystemBase.CPUs
         #region Event handlers
         private void Clock_ClockTick()
         {
-            clockCount--;
-            if (clockCount == 0)
-            {
-                clockCount = clockDivisor;
-                Interlocked.Increment(ref ticksToRun);
+            if (!enabled) 
+                return;
+            
+            Interlocked.Increment(ref ticksToRun);
 
-                while (ticksToRun >= 3) // Prefer slowdown versus getting overwhelmed with ticks
-                {
-                }
+            while (ticksToRun > 2) // Prefer slowdown versus getting overwhelmed with ticks
+            {
             }
         }
         #endregion
@@ -193,7 +195,7 @@ namespace SystemBase.CPUs
         {
             totalTicks++;
 
-            registerStatus.SetFlag(Status.Not_Used, true);
+            registerStatus.SetFlag(Status.Not_Used);
 
             if (currentAddressMicroInstruction != null)
             {
@@ -462,8 +464,8 @@ namespace SystemBase.CPUs
 
             yield return new ClockTick();
             registerStatus = 0x00;
-            registerStatus.SetFlag(Status.Not_Used, true);
-            registerStatus.SetFlag(Status.IrqDisable, true);
+            registerStatus.SetFlag(Status.Not_Used);
+            registerStatus.SetFlag(Status.IrqDisable);
 
             yield return new ClockTick();
             registerStackPointer = 0xFD;
@@ -501,9 +503,9 @@ namespace SystemBase.CPUs
             StackPush((byte)(registerProgramCounter & 0xFF));
             
             yield return new ClockTick();
-            registerStatus.SetFlag(Status.BrkCommand, false);
-            registerStatus.SetFlag(Status.IrqDisable, true);
-            registerStatus.SetFlag(Status.Not_Used, true);
+            registerStatus.ClearFlag(Status.BrkCommand);
+            registerStatus.SetFlag(Status.IrqDisable);
+            registerStatus.SetFlag(Status.Not_Used);
 
             yield return new ClockTick();
             StackPush((byte)registerStatus);
@@ -531,8 +533,8 @@ namespace SystemBase.CPUs
             ushort result = (ushort)(registerAccumulator + data + carry);
 
             SetStatusBasedOnResult(result);
-            registerStatus.SetFlag(Status.Overflow, ((~(registerAccumulator ^ data) & (registerAccumulator ^ result)) & 0x0080) != 0);
-            registerStatus.SetFlag(Status.Carry, result > 0xFF);
+            registerStatus.SetOrClearFlag(Status.Overflow, ((~(registerAccumulator ^ data) & (registerAccumulator ^ result)) & 0x0080) != 0);
+            registerStatus.SetOrClearFlag(Status.Carry, result > 0xFF);
             registerAccumulator = (byte)(result & 0xFF);
         }
 
@@ -555,7 +557,7 @@ namespace SystemBase.CPUs
             if (currentInstruction.AddressMode == ACC)
             {
                 yield return new ClockTick();
-                registerStatus.SetFlag(Status.Carry, (registerAccumulator & 0x80) != 0);
+                registerStatus.SetOrClearFlag(Status.Carry, (registerAccumulator & 0x80) != 0);
                 registerAccumulator = (byte)(registerAccumulator << 1);
                 SetStatusBasedOnResult(registerAccumulator);
             }
@@ -565,7 +567,7 @@ namespace SystemBase.CPUs
                 byte data = bus.ReadData(address);
 
                 yield return new ClockTick();
-                registerStatus.SetFlag(Status.Carry, (data & 0x80) != 0);
+                registerStatus.SetOrClearFlag(Status.Carry, (data & 0x80) != 0);
                 data = (byte)(data << 1);
                 SetStatusBasedOnResult(data);
 
@@ -636,9 +638,9 @@ namespace SystemBase.CPUs
             yield return new ClockTick();
             byte data = bus.ReadData(address);
             byte result = (byte)(registerAccumulator & data);
-            registerStatus.SetFlag(Status.Zero, result == 0);
-            registerStatus.SetFlag(Status.Negative, (data & 0x80) != 0);
-            registerStatus.SetFlag(Status.Overflow, (data & 0x40) != 0);
+            registerStatus.SetOrClearFlag(Status.Zero, result == 0);
+            registerStatus.SetOrClearFlag(Status.Negative, (data & 0x80) != 0);
+            registerStatus.SetOrClearFlag(Status.Overflow, (data & 0x40) != 0);
         }
 
         /// <summary>
@@ -701,7 +703,7 @@ namespace SystemBase.CPUs
         private IEnumerable<ClockTick> BRK(ushort address)
         {
             yield return new ClockTick();
-            registerStatus.SetFlag(Status.IrqDisable, true);
+            registerStatus.SetFlag(Status.IrqDisable);
 
             yield return new ClockTick();
             StackPush((byte)((registerProgramCounter >> 8) & 0xFF));
@@ -762,7 +764,7 @@ namespace SystemBase.CPUs
         private IEnumerable<ClockTick> CLC(ushort address)
         {
             yield return new ClockTick();
-            registerStatus.SetFlag(Status.Carry, false);
+            registerStatus.ClearFlag(Status.Carry);
         }
 
         /// <summary>
@@ -771,7 +773,7 @@ namespace SystemBase.CPUs
         private IEnumerable<ClockTick> CLD(ushort address)
         {
             yield return new ClockTick();
-            registerStatus.SetFlag(Status.DecimalMode, false);
+            registerStatus.ClearFlag(Status.DecimalMode);
         }
 
         /// <summary>
@@ -780,7 +782,7 @@ namespace SystemBase.CPUs
         private IEnumerable<ClockTick> CLI(ushort address)
         {
             yield return new ClockTick();
-            registerStatus.SetFlag(Status.IrqDisable, false);
+            registerStatus.ClearFlag(Status.IrqDisable);
         }
 
         /// <summary>
@@ -789,7 +791,7 @@ namespace SystemBase.CPUs
         private IEnumerable<ClockTick> CLV(ushort address)
         {
             yield return new ClockTick();
-            registerStatus.SetFlag(Status.Overflow, false);
+            registerStatus.ClearFlag(Status.Overflow);
         }
 
         /// <summary>
@@ -802,7 +804,7 @@ namespace SystemBase.CPUs
 
             ushort result = (ushort)(registerAccumulator - data);
             SetStatusBasedOnResult(result);
-            registerStatus.SetFlag(Status.Carry, registerAccumulator >= data);
+            registerStatus.SetOrClearFlag(Status.Carry, registerAccumulator >= data);
         }
 
         /// <summary>
@@ -815,7 +817,7 @@ namespace SystemBase.CPUs
 
             ushort result = (ushort)(registerX - data);
             SetStatusBasedOnResult(result);
-            registerStatus.SetFlag(Status.Carry, registerX >= data);
+            registerStatus.SetOrClearFlag(Status.Carry, registerX >= data);
         }
 
         /// <summary>
@@ -828,7 +830,7 @@ namespace SystemBase.CPUs
 
             ushort result = (ushort)(registerY - data);
             SetStatusBasedOnResult(result);
-            registerStatus.SetFlag(Status.Carry, registerY >= data);
+            registerStatus.SetOrClearFlag(Status.Carry, registerY >= data);
         }
 
         /// <summary>
@@ -979,7 +981,7 @@ namespace SystemBase.CPUs
             if (currentInstruction.AddressMode == ACC)
             {
                 yield return new ClockTick();
-                registerStatus.SetFlag(Status.Carry, (registerAccumulator & 0x0001) != 0);
+                registerStatus.SetOrClearFlag(Status.Carry, (registerAccumulator & 0x0001) != 0);
                 registerAccumulator = (byte)(registerAccumulator >> 1);
                 SetStatusBasedOnResult(registerAccumulator);
             }
@@ -989,7 +991,7 @@ namespace SystemBase.CPUs
                 byte data = bus.ReadData(address);
 
                 yield return new ClockTick();
-                registerStatus.SetFlag(Status.Carry, (data & 0x0001) != 0);
+                registerStatus.SetOrClearFlag(Status.Carry, (data & 0x0001) != 0);
                 data = (byte)(data >> 1);
                 SetStatusBasedOnResult(data);
 
@@ -1040,8 +1042,8 @@ namespace SystemBase.CPUs
 
             yield return new ClockTick();
             StackPush(data);
-            registerStatus.SetFlag(Status.BrkCommand, false);
-            registerStatus.SetFlag(Status.Not_Used, false);
+            registerStatus.ClearFlag(Status.BrkCommand);
+            registerStatus.ClearFlag(Status.Not_Used);
         }
 
         /// <summary>
@@ -1072,7 +1074,7 @@ namespace SystemBase.CPUs
 
             yield return new ClockTick();
             //SetStatus(Status.BrkCommand, false);
-            registerStatus.SetFlag(Status.Not_Used, true);
+            registerStatus.SetFlag(Status.Not_Used);
         }
 
         /// <summary>
@@ -1085,7 +1087,7 @@ namespace SystemBase.CPUs
                 yield return new ClockTick();
                 ushort result = (ushort)(registerAccumulator << 1 | (registerStatus.HasFlag(Status.Carry) ? 1 : 0));
                 SetStatusBasedOnResult(result);
-                registerStatus.SetFlag(Status.Carry, (result & 0xFF00) != 0);
+                registerStatus.SetOrClearFlag(Status.Carry, (result & 0xFF00) != 0);
                 registerAccumulator = (byte)result;
             }
             else
@@ -1096,7 +1098,7 @@ namespace SystemBase.CPUs
                 yield return new ClockTick();
                 ushort result = (ushort)(data << 1 | (registerStatus.HasFlag(Status.Carry) ? 1 : 0));
                 SetStatusBasedOnResult(result);
-                registerStatus.SetFlag(Status.Carry, (result & 0xFF00) != 0);
+                registerStatus.SetOrClearFlag(Status.Carry, (result & 0xFF00) != 0);
 
                 yield return new ClockTick();
                 bus.WriteData(address, (byte)result);
@@ -1113,7 +1115,7 @@ namespace SystemBase.CPUs
                 yield return new ClockTick();
                 ushort result = (ushort)((registerStatus.HasFlag(Status.Carry) ? 1 : 0) << 7 | registerAccumulator >> 1);
                 SetStatusBasedOnResult(result);
-                registerStatus.SetFlag(Status.Carry, (registerAccumulator & 0x01) != 0);
+                registerStatus.SetOrClearFlag(Status.Carry, (registerAccumulator & 0x01) != 0);
                 registerAccumulator = (byte)result;
             }
             else
@@ -1124,7 +1126,7 @@ namespace SystemBase.CPUs
                 yield return new ClockTick();
                 ushort result = (ushort)((registerStatus.HasFlag(Status.Carry) ? 1 : 0) << 7 | data >> 1);
                 SetStatusBasedOnResult(result);
-                registerStatus.SetFlag(Status.Carry, (data & 0x01) != 0);
+                registerStatus.SetOrClearFlag(Status.Carry, (data & 0x01) != 0);
 
                 yield return new ClockTick();
                 bus.WriteData(address, (byte)result);
@@ -1140,8 +1142,8 @@ namespace SystemBase.CPUs
             registerStatus = StackPop();
 
             yield return new ClockTick();
-            registerStatus.SetFlag(Status.BrkCommand, false);
-            registerStatus.SetFlag(Status.Not_Used, false);
+            registerStatus.ClearFlag(Status.BrkCommand);
+            registerStatus.ClearFlag(Status.Not_Used);
 
             yield return new ClockTick();
             byte low = StackPop();
@@ -1184,8 +1186,8 @@ namespace SystemBase.CPUs
             ushort result = (ushort)(registerAccumulator + data + carry);
             
             SetStatusBasedOnResult(result);
-            registerStatus.SetFlag(Status.Carry, (result & 0xFF00) != 0);
-            registerStatus.SetFlag(Status.Overflow, ((result ^ registerAccumulator) & (result ^ data) & 0x0080) != 0);
+            registerStatus.SetOrClearFlag(Status.Carry, (result & 0xFF00) != 0);
+            registerStatus.SetOrClearFlag(Status.Overflow, ((result ^ registerAccumulator) & (result ^ data) & 0x0080) != 0);
             registerAccumulator = (byte)(result & 0xFF);
         }
 
@@ -1195,7 +1197,7 @@ namespace SystemBase.CPUs
         private IEnumerable<ClockTick> SEC(ushort address)
         {
             yield return new ClockTick();
-            registerStatus.SetFlag(Status.Carry, true);
+            registerStatus.SetFlag(Status.Carry);
         }
 
         /// <summary>
@@ -1204,7 +1206,7 @@ namespace SystemBase.CPUs
         private IEnumerable<ClockTick> SED(ushort address)
         {
             yield return new ClockTick();
-            registerStatus.SetFlag(Status.DecimalMode, true);
+            registerStatus.SetFlag(Status.DecimalMode);
         }
 
         /// <summary>
@@ -1213,7 +1215,7 @@ namespace SystemBase.CPUs
         private IEnumerable<ClockTick> SEI(ushort address)
         {
             yield return new ClockTick();
-            registerStatus.SetFlag(Status.IrqDisable, true);
+            registerStatus.SetFlag(Status.IrqDisable);
         }
 
         /// <summary>
@@ -1349,8 +1351,8 @@ namespace SystemBase.CPUs
 
         private void SetStatusBasedOnResult(ushort result)
         {
-            registerStatus.SetFlag(Status.Negative, (result & 0x80) != 0);
-            registerStatus.SetFlag(Status.Zero, (result & 0xFF) == 0);
+            registerStatus.SetOrClearFlag(Status.Negative, (result & 0x80) != 0);
+            registerStatus.SetOrClearFlag(Status.Zero, (result & 0xFF) == 0);
         }
 
 

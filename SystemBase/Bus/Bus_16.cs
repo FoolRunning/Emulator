@@ -42,6 +42,16 @@ namespace SystemBase.Bus
             componentRanges.Add(addressRange);
             components.Add(component);
         }
+
+        public void RemoveComponent(IBusComponent_16 component)
+        {
+            int index = components.IndexOf(component);
+            if (index < 0) 
+                return;
+
+            componentRanges.RemoveAt(index);
+            components.RemoveAt(index);
+        }
         #endregion
     }
 

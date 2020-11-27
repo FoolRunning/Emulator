@@ -61,21 +61,21 @@ namespace System_NES
         #region IController implementation
         public void KeyboardKeyDown(ConsoleKey key)
         {
-            int button = ButtonForKey(key);
-            if (button != -1)
-                currentButtonStatus.SetFlag((byte)button, true);
+            byte button = ButtonForKey(key);
+            if (button != 0xFF)
+                currentButtonStatus.SetFlag(button);
         }
 
         public void KeyboardKeyUp(ConsoleKey key)
         {
-            int button = ButtonForKey(key);
-            if (button != -1)
-                currentButtonStatus.SetFlag((byte)button, false);
+            byte button = ButtonForKey(key);
+            if (button != 0xFF)
+                currentButtonStatus.ClearFlag(button);
         }
         #endregion
 
         #region Private helper methods
-        private static int ButtonForKey(ConsoleKey key)
+        private static byte ButtonForKey(ConsoleKey key)
         {
             switch (key)
             {
@@ -88,7 +88,7 @@ namespace System_NES
                 case ConsoleKey.LeftArrow: return Button.Left;
                 case ConsoleKey.RightArrow: return Button.Right;
 
-                default: return -1;
+                default: return 0xFF;
             }
         }
         #endregion

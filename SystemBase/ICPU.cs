@@ -20,5 +20,9 @@ namespace SystemBase
         /// Non-maskable interrupt request
         /// </summary>
         void NMI();
+
+        void Pause();
+
+        void Resume();
     }
 }

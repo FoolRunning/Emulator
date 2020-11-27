@@ -19,19 +19,19 @@ namespace System_NES
         {
             //Clock = new SystemClock(2000000);
             Clock = new SystemClock(5369318); // 1/4 speed of real system, but emulate-able
-            //Clock = new SystemClock(21477272);
+            //Clock = new SystemClock(21477272); // True speed
             
             bus = new Bus_16();
-            cpu = new CPU_6502(Clock, bus, 3); // 3x slower than PPU
+            cpu = new CPU_6502(new ClockDivider(Clock, 3), bus); // 3x slower than PPU
             ppu = new PPU(Clock, cpu);
             ram = new RAM_16(2040);
-
-            bus.AddComponent(cpu, new BusAddressRange_16(ushort.MaxValue, 0));
-            bus.AddComponent(ram, new BusAddressRange_16(0x0000, 0x1FFF));
-            bus.AddComponent(ppu, new BusAddressRange_16(0x2000, 0x3FFF));
-            
+            DMATransfer dma = new DMATransfer(new ClockDivider(Clock, 3), bus, cpu, ppu);
             controllers[0] = new Controller(0x4016);
             controllers[1] = new Controller(0x4017);
+
+            bus.AddComponent(ram, new BusAddressRange_16(0x0000, 0x1FFF));
+            bus.AddComponent(ppu, new BusAddressRange_16(0x2000, 0x3FFF));
+            bus.AddComponent(dma, new BusAddressRange_16(0x4014, 0x4014));
             bus.AddComponent((Controller)controllers[0], new BusAddressRange_16(0x4016, 0x4016));
             bus.AddComponent((Controller)controllers[1], new BusAddressRange_16(0x4017, 0x4017));
         }
@@ -62,10 +62,15 @@ namespace System_NES
 
         public bool LoadProgramFile(string filePath)
         {
+            if (cartridge != null)
+                bus.RemoveComponent(cartridge);
+
             cartridge = new Cartridge(filePath);
             bus.AddComponent(cartridge, new BusAddressRange_16(0x4020, 0xFFFF));
             
             ppu.SetCartridge(cartridge);
+
+            cpu.Reset();
 
             return true;
         }
@@ -75,8 +80,6 @@ namespace System_NES
             ppu.Start();
             cpu.Start();
             Clock.Start();
-            
-            cpu.Reset();
         }
 
         public void Stop()

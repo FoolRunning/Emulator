@@ -25,13 +25,19 @@ namespace EmulatorUI
             {
                 dispDebugOutput.Visible = false;
                 txtDebugText.Visible = true;
+                txtDebugText.ForeColor = textDisplay.Color;
 
                 display.FrameFinished += Display_FrameFinished;
             }
             
-            ClientSize = new Size(display.Size.Width * 2, display.Size.Height * 2);
+            ClientSize = new Size(display.Size.Width, display.Size.Height);
             if (!string.IsNullOrEmpty(display.Title))
                 Text = display.Title;
+        }
+
+        public int Scale
+        {
+            set => ClientSize = new Size(display.Size.Width * value, display.Size.Height * value);
         }
 
         private void Display_FrameFinished()

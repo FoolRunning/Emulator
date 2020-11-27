@@ -17,9 +17,10 @@ namespace EmulatorUI
         private byte[] pixelData;
         private GCHandle pixelDataHandle;
         private IPixelDisplay display;
+        private InterpolationMode smoothingMode = InterpolationMode.NearestNeighbor;
 
         private int paintCount;
-        private int currentDraws;
+        private string fpsStr;
         private DateTime then;
         #endregion
 
@@ -31,17 +32,24 @@ namespace EmulatorUI
                      ControlStyles.ResizeRedraw | 
                      ControlStyles.DoubleBuffer |
                      ControlStyles.Selectable, true);
+
+            size = new Size(2, 2);
+            pixelData = new byte[16];
+            pixelDataHandle = GCHandle.Alloc(pixelData, GCHandleType.Pinned);
+            pixels = new Bitmap(2, 2, PixelFormat.Format32bppRgb);
         }
 
         public bool ShowFPS { get; set; }
 
+        public bool SmoothPixels
+        {
+            set => smoothingMode = value ? InterpolationMode.HighQualityBilinear : InterpolationMode.NearestNeighbor;
+        }
+
         public void SetPixelDisplay(IPixelDisplay newDisplay)
         {
-            if (pixels != null)
-            {
-                pixels.Dispose();
-                pixelDataHandle.Free();
-            }
+            pixels.Dispose();
+            pixelDataHandle.Free();
 
             if (display != null)
                 display.FrameFinished -= Display_FrameFinished;
@@ -80,11 +88,9 @@ namespace EmulatorUI
         #region Overridden methods
         protected override void Dispose(bool disposing)
         {
-            if (pixels != null)
-            {
-                pixels.Dispose();
-                pixelDataHandle.Free();
-            }
+            pixels.Dispose();
+            pixelDataHandle.Free();
+
             base.Dispose(disposing);
         }
 
@@ -105,36 +111,33 @@ namespace EmulatorUI
 
         protected override void OnPaint(PaintEventArgs e)
         {
-            e.Graphics.CompositingMode = CompositingMode.SourceCopy;
-            //using (Brush b = new SolidBrush(Color.Black))
-            //    e.Graphics.FillRectangle(b, 0, 0, Width, Height);
+            e.Graphics.Clear(Color.DarkSlateGray);
  
-            e.Graphics.InterpolationMode = InterpolationMode.NearestNeighbor;
-            //e.Graphics.SmoothingMode = SmoothingMode.None;
+            float ratioX = Width / (float)size.Width;
+            float ratioY = Height / (float)size.Height;
+            //float ratioX = Width / size.Width;
+            //float ratioY = Height / size.Height;
+            float scale = ratioX > ratioY ? ratioY : ratioX;
+            int outputWidth = (int)(size.Width * scale);
+            int outputHeight = (int)(size.Height * scale);
+
+            e.Graphics.CompositingMode = CompositingMode.SourceCopy;
+            e.Graphics.InterpolationMode = smoothingMode;
+            Rectangle imageRect = new Rectangle((Width - outputWidth) / 2, (Height - outputHeight) / 2, outputWidth, outputHeight);
+            lock (pixels)
+                e.Graphics.DrawImage(pixels, imageRect);
+            
+            imageRect.Inflate(1, 1);
+            using (Pen p = new Pen(Color.Ivory))
+                e.Graphics.DrawRectangle(p, imageRect);
 
             if (ShowFPS)
             {
                 e.Graphics.CompositingMode = CompositingMode.SourceOver;
                 using (Brush b = new SolidBrush(Color.White))
-                    e.Graphics.DrawString("FPS: " + currentDraws, Font, b, 5, 5);
+                    e.Graphics.DrawString(fpsStr, Font, b, 5, 5);
                 e.Graphics.CompositingMode = CompositingMode.SourceCopy;
             }
-
-            if (pixels == null) 
-                return;
-
-            //e.Graphics.InterpolationMode = InterpolationMode.HighQualityBicubic;
-            //e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
-
-            float ratioX = Width / (float)size.Width;
-            float ratioY = Height / (float)size.Height;
-            float scale = ratioX > ratioY ? ratioY : ratioX;
-
-            int outputWidth = (int)(size.Width * scale);
-            int outputHeight = (int)(size.Height * scale);
-            e.Graphics.DrawImage(pixels, (Width - outputWidth) / 2, (Height - outputHeight) / 2, outputWidth, outputHeight);
-
-            paintCount++;
         }
         #endregion
 
@@ -151,16 +154,18 @@ namespace EmulatorUI
             if (display == null)
                 return;
 
-            display.GetPixels(pixelData);
+            lock (pixels)
+                display.GetPixels(pixelData);
 
             DateTime now = DateTime.Now;
             if (then <= now)
             {
                 then = now.AddSeconds(1);
-                currentDraws = paintCount;
+                fpsStr = "FPS: " + paintCount;
                 paintCount = 0;
             }
 
+            paintCount++;
             Invalidate(false);
         }
         #endregion

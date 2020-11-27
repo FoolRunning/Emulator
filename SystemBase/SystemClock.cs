@@ -4,11 +4,9 @@ using System.Threading;
 
 namespace SystemBase
 {
-    public sealed class SystemClock : IDisposable
+    public sealed class SystemClock : IClock
     {
         #region Events/Member variables
-        public event Action ClockTick;
-
         private readonly Stopwatch timer;
         private readonly Thread clockThread;
         private readonly double ticksPerClock;
@@ -35,13 +33,17 @@ namespace SystemBase
         }
         #endregion
 
-        #region Implementation of IDisposable
+        #region IDisposable implementation
         public void Dispose()
         {
             run = false;
             if (clockThread.IsAlive)
                 clockThread.Join();
         }
+        #endregion
+
+        #region IClock implementation
+        public event Action ClockTick;
         #endregion
 
         #region Public methods

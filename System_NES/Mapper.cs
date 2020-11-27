@@ -11,8 +11,10 @@
             this.chrBankCount = chrBankCount;
         }
 
-        public abstract bool MapCPUAddress(ushort address, out ushort newAddress);
+        public abstract bool MapCPUAddressRead(ushort address, out uint newAddress);
+        public abstract bool MapCPUAddressWrite(ushort address, out uint newAddress);
         
-        public abstract bool MapPPUAddress(ushort address, out ushort newAddress);
+        public abstract bool MapPPUAddressRead(ushort address, out uint newAddress);
+        public abstract bool MapPPUAddressWrite(ushort address, out uint newAddress);
     }
 }

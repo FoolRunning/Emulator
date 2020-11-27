@@ -23,6 +23,8 @@ namespace SystemBase
     public interface ITextDisplay : IDisplay
     {
         string Text { get; }
+
+        Color Color { get; }
     }
 
     public interface IPixelDisplay : IDisplay
