@@ -1,12 +1,18 @@
-﻿namespace System_NES.Mappers
-{
-    internal sealed class Mapper000 : Mapper
-    {
-        private readonly uint cpuAddressMask;
+﻿using SystemBase;
 
-        public Mapper000(ushort prgBankCount, byte chrBankCount, MirrorMode cartMirrorMode) : base(prgBankCount, chrBankCount, cartMirrorMode)
+namespace System_NES.Mappers
+{
+    internal abstract class SimpleMapper : Mapper
+    {
+        protected uint prgSelectedBankLow;
+        protected uint prgSelectedBankHigh;
+        protected uint chrSelectedBank;
+
+        protected SimpleMapper(ushort prgBankCount, byte chrBankCount, MirrorMode cartMirrorMode) : base(prgBankCount, chrBankCount, cartMirrorMode)
         {
-            cpuAddressMask = prgBankCount == 1 ? (uint)0x3FFF : (uint)0x7FFF;
+            prgSelectedBankLow = 0;
+            prgSelectedBankHigh = (uint)(prgBankCount - 1);
+            chrSelectedBank = 0;
         }
 
         #region Mapper implementation
@@ -14,21 +20,15 @@
 
         public override bool MapCPUAddressRead(ushort address, out uint newAddress)
         {
-            if (address >= 0x8000 && address <= 0xFFFF)
+            if (address >= 0x8000 && address <= 0xBFFF)
             {
-                newAddress = address & cpuAddressMask;
+                newAddress = (uint)((address & 0x3FFF) + prgSelectedBankLow * Utils.sixteenKilobytes);
                 return true;
             }
 
-            newAddress = uint.MaxValue;
-            return false;
-        }
-
-        public override bool MapCPUAddressWrite(ushort address, byte data, out uint newAddress)
-        {
-            if (address >= 0x8000 && address <= 0xFFFF)
+            if (address >= 0xC000 && address <= 0xFFFF)
             {
-                newAddress = address & cpuAddressMask;
+                newAddress = (uint)((address & 0x3FFF) + prgSelectedBankHigh * Utils.sixteenKilobytes);
                 return true;
             }
 
@@ -40,7 +40,7 @@
         {
             if (address <= 0x1FFF)
             {
-                newAddress = address;
+                newAddress = address + chrSelectedBank * Utils.eightKilobytes;
                 return true;
             }
 

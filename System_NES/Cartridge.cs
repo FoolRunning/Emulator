@@ -32,7 +32,8 @@ namespace System_NES
         Horizontal,
         Vertical,
         OneScreenLo,
-        OneScreenHigh
+        OneScreenHigh,
+        Cartridge
     }
     #endregion
 
@@ -41,7 +42,7 @@ namespace System_NES
         #region Member variables
         private readonly byte[] prgData;
         private readonly byte[] chrData;
-        private readonly byte[] trainerData;
+        //private readonly byte[] trainerData;
         private readonly Mapper mapper;
         private readonly InfoFlags info;
         private readonly Timing timing;
@@ -56,10 +57,10 @@ namespace System_NES
                     return;
 
                 byte[] header = reader.ReadBytes(16);
-                if (header[0] != 'N' || header[1] != 'E' || header[2] != 'S' && header[3] != 0x1A)
+                if (header[0] != 'N' || header[1] != 'E' || header[2] != 'S' || header[3] != 0x1A)
                     return;
 
-                int mapperId;
+                byte mapperId = (byte)((header[7] & 0xF0) | (header[6] >> 4));
                 byte chrBankCount;
                 ushort prgBankCount;
                 if ((header[7] & 0x0C) != 0x08)
@@ -68,7 +69,6 @@ namespace System_NES
                     prgBankCount = header[4];
                     chrBankCount = header[5];
                     info = (InfoFlags)(header[6] & 0x0F);
-                    mapperId = (header[7] & 0xF0) | ((header[6] & 0xF0) >> 4);
                     timing = (Timing)(header[9] & 0x01);
                 }
                 else
@@ -77,32 +77,43 @@ namespace System_NES
                     prgBankCount = (ushort)(((header[9] & 0x0F) << 8) | header[4]);
                     chrBankCount = header[5];
                     info = (InfoFlags)(header[6] & 0x0F);
-                    mapperId = ((header[8] & 0xF0) << 4) | (header[7] & 0xF0) | ((header[6] & 0xF0) >> 4);
                     timing = (Timing)(header[12] & 0x03);
                 }
 
                 if (timing != Timing.NTSC)
                     Console.WriteLine("WARNING: Loaded non-NTSC ROM");
 
-                if (info.HasFlag(InfoFlags.Trainer))
-                {
-                    trainerData = new byte[512];
-                    reader.Read(trainerData, 0, trainerData.Length);
-                }
+                //if (info.HasFlag(InfoFlags.Trainer))
+                //{
+                //    trainerData = new byte[512];
+                //    reader.Read(trainerData, 0, trainerData.Length);
+                //}
 
-                int prgSize = prgBankCount * 16384;
-                int chrSize = chrBankCount * 8192;
+                int prgSize = prgBankCount * Utils.sixteenKilobytes;
+                int chrSize = chrBankCount * Utils.eightKilobytes;
                 if (chrSize == 0)
-                    chrSize = 8192; // Cartridge has RAM?
+                    chrSize = Utils.eightKilobytes; // Cartridge has RAM?
 
                 prgData = new byte[prgSize];
                 reader.Read(prgData, 0, prgSize);
                 chrData = new byte[chrSize];
                 reader.Read(chrData, 0, chrSize);
 
+                MirrorMode cartMirrorMode = info.HasFlag(InfoFlags.Mirroring) ? MirrorMode.Vertical : MirrorMode.Horizontal;
+                if (mapperId == 0)
+                {
+                    // Fix some simple incorrect mapping IDs
+                    if (chrBankCount > 1)
+                        mapperId = 3;
+                    else if (prgBankCount > 2)
+                        mapperId = 2;
+                }
+                    
                 switch (mapperId)
                 {
-                    case 0: mapper = new Mapper000(prgBankCount, chrBankCount); break;
+                    case 0: mapper = new Mapper000(prgBankCount, chrBankCount, cartMirrorMode); break;
+                    case 2: mapper = new Mapper002(prgBankCount, chrBankCount, cartMirrorMode); break;
+                    case 3: mapper = new Mapper003(prgBankCount, chrBankCount, cartMirrorMode); break;
                     default:
                         throw new NotImplementedException("Mapper " + mapperId + " is not implemented");
                 }
@@ -114,14 +125,16 @@ namespace System_NES
         {
         }
 
-        public MirrorMode Mirror =>
-            info.HasFlag(InfoFlags.Mirroring) ? MirrorMode.Vertical : MirrorMode.Horizontal;
+        public MirrorMode Mirror => mapper.MirrorMode;
 
         #region IBusComponent_16 implementation
         public void WriteDataFromBus(ushort address, byte data)
         {
-            //if (mapper.MapCPUAddressWrite(address, out uint newAddress))
-            //    prgData[newAddress] = data;
+            if (mapper.MapCPUAddressWrite(address, data, out uint newAddress))
+            {
+                if (newAddress != Mapper.MapperHandled)
+                    prgData[newAddress] = data;
+            }
         }
 
         public byte ReadDataForBus(ushort address)
@@ -138,7 +151,7 @@ namespace System_NES
 
         public bool WritePPUData(ushort address, byte data)
         {
-            if (mapper.MapPPUAddressWrite(address, out uint newAddress))
+            if (mapper.MapPPUAddressWrite(address, data, out uint newAddress))
             {
                 chrData[newAddress] = data;
                 return true;

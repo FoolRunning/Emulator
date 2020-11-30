@@ -2,14 +2,14 @@
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Drawing;
-using System.Threading;
 using SystemBase;
 using System.Diagnostics;
+using System.Runtime.CompilerServices;
 
 namespace System_NES
 {
     [SuppressMessage("ReSharper", "InconsistentNaming")]
-    internal sealed class PPU : IPixelDisplay, IBusComponent_16
+    internal sealed class PPU : ClockListener, IBusComponent_16, IPixelDisplay
     {
         #region Status enumeration
         private static class Status
@@ -66,11 +66,6 @@ namespace System_NES
 
         private readonly PatternTableDisp[] patternTableDisplay = new PatternTableDisp[2];
         private readonly ICPU cpu;
-        private readonly IClock clock;
-        private readonly Thread ppuThread;
-        private long totalTicks;
-        private volatile int ticksToRun;
-        private volatile bool run;
         private IEnumerator<ClockTick> renderFrame;
 #if DEBUG
         private int debugCycle = -2; // A couple ticks to get going
@@ -80,16 +75,17 @@ namespace System_NES
         private ushort pixelByteOffset;
         private byte[] displayedBuffer;
         private byte[] notDisplayedBuffer;
+        private bool oddFrame;
         private Cartridge cartridge;
 
         private readonly byte[] palleteTable = new byte[32];
         private readonly byte[][] nameTable = new byte[2][];
-        private readonly byte[][] patternTable = new byte[2][];
+        private readonly byte[] patternTable = new byte[Utils.eightKilobytes];
         private readonly byte[] mainOAM = new byte[64 * 4]; // 64 sprites = 256 bytes
         private readonly byte[] secondaryOAM = new byte[8 * 4]; // 8 sprites = 32 bytes
         private byte registerStatus;
-        private byte registerMask;
-        private byte registerControl;
+        private volatile byte registerControl;
+        private volatile byte registerMask;
         private byte oamAddress;
         private bool byteLatch;
         private byte dataBuffer;
@@ -119,19 +115,16 @@ namespace System_NES
         private readonly byte[] fgShifterSpriteHigh = new byte[maxSprites];
         private readonly byte[] fgSpriteAttribute = new byte[maxSprites];
         private readonly byte[] fgSpriteCounter = new byte[maxSprites];
-        private readonly object registerSyncLock = new object();
+        private readonly object registerStatusSyncLock = new object();
         #endregion
         
         #region Constructor
-        public PPU(IClock clock, ICPU cpu)
+        public PPU(IClock clock, ICPU cpu) : base(clock, "PPU")
         {
-            this.clock = clock;
             this.cpu = cpu;
 
             nameTable[0] = new byte[1024];
             nameTable[1] = new byte[1024];
-            patternTable[0] = new byte[4096];
-            patternTable[1] = new byte[4096];
 
             Size = new Size(256, 240);
             Pallete = new[] // Pallete for NES is only 64 colors, but .Net needs 255 colors
@@ -158,26 +151,11 @@ namespace System_NES
             notDisplayedBuffer = new byte[Size.Width * Size.Height];
             patternTableDisplay[0] = new PatternTableDisp(this, 0);
             patternTableDisplay[1] = new PatternTableDisp(this, 1);
-
-            run = true;
-            ppuThread = new Thread(PPULoop);
-            ppuThread.IsBackground = true;
-            ppuThread.Name = "PPU";
-
-            clock.ClockTick += Clock_ClockTick;
+            
+            renderFrame = RenderFrame(false).GetEnumerator();
         }
         #endregion
-
-        #region IDisposable implementation
-        public void Dispose()
-        {
-            clock.ClockTick -= Clock_ClockTick;
-            run = false;
-            if (ppuThread.IsAlive)
-                ppuThread.Join();
-        }
-        #endregion
-
+        
         #region IPixelDisplay implementation
         public string Title => "Main display";
 
@@ -213,7 +191,7 @@ namespace System_NES
                     oamAddress = data;
                     break;
                 case 0x2004: // OAM Data
-                    mainOAM[oamAddress] = data;
+                    mainOAM[oamAddress++] = data;
                     break;
                 case 0x2005: // Scroll
                     if (!byteLatch)
@@ -261,7 +239,7 @@ namespace System_NES
                 case 0x2001: // Mask
                     return registerMask;
                 case 0x2002: // Status
-                    lock (registerSyncLock)
+                    lock (registerStatusSyncLock)
                     {
                         data = (byte) ((registerStatus & 0xE0) | (dataBuffer & 0x1F));
                         registerStatus.ClearFlag(Status.VerticalBlank);
@@ -290,85 +268,38 @@ namespace System_NES
 
         public IEnumerable<IPixelDisplay> PatternTableDisplays => patternTableDisplay;
 
-        public void Start()
-        {
-            ppuThread.Start();
-        }
-
         public void SetCartridge(Cartridge cart)
         {
             cartridge = cart;
             patternTableDisplay[0].DataChanged();
             patternTableDisplay[1].DataChanged();
         }
-
-        public void WriteOAM(byte address, byte data)
-        {
-            mainOAM[address] = data;
-        }
-
-        #region Event handlers
-        private void Clock_ClockTick()
-        {
-            Interlocked.Increment(ref ticksToRun);
-
-            while (ticksToRun > 2) // Prefer slowdown versus getting overwhelmed with ticks
-            {
-            }
-        }
-        #endregion
-
+        
         #region Main PPU loop
-        private void PPULoop()
+        protected override void HandleSingleTick()
         {
-            ticksToRun = 0;
-
-            //DateTime then = DateTime.Now.AddSeconds(1);
-            //int tickCount = 0;
-            renderFrame = RenderFrame(false).GetEnumerator();
-            bool oddFrame = false;
-
-            while (run)
+            if (!renderFrame.MoveNext())
             {
-                if (ticksToRun > 0)
-                {
-                    Interlocked.Decrement(ref ticksToRun);
-                    totalTicks++;
-
-                    if (!renderFrame.MoveNext())
-                    {
-                        oddFrame = !oddFrame;
-                        renderFrame = RenderFrame(oddFrame).GetEnumerator();
-                        renderFrame.MoveNext(); // Still want to consume a clock tick
+                oddFrame = !oddFrame;
+                renderFrame = RenderFrame(oddFrame).GetEnumerator();
+                renderFrame.MoveNext(); // Still want to consume a clock tick
 #if DEBUG
-                        if (!oddFrame)
-                            debugCycle--; // Extra clock tick used
+                if (!oddFrame)
+                    debugCycle--; // Extra clock tick used
 #endif
-                    }
-#if DEBUG
-                    debugCycle++;
-                    if (debugCycle >= 341)
-                    {
-                        debugCycle = 0;
-                        debugScanLine++;
-                        if (debugScanLine >= 262)
-                        {
-                            debugScanLine = 0;
-                        }
-                    }
-#endif
-                }
-
-                // DEBUG CODE ********************************************************************************************
-                //DateTime now = DateTime.Now;
-                //if (now >= then)
-                //{
-                //    Console.WriteLine($"{tickCount} - {ticksToRun}");
-                //    tickCount = 0;
-                //    then = now.AddSeconds(1);
-                //}
-                // DEBUG CODE ********************************************************************************************
             }
+#if DEBUG
+            debugCycle++;
+            if (debugCycle >= 341)
+            {
+                debugCycle = 0;
+                debugScanLine++;
+                if (debugScanLine >= 262)
+                {
+                    debugScanLine = 0;
+                }
+            }
+#endif
         }
 
         private IEnumerable<ClockTick> RenderFrame(bool oddFrame)
@@ -445,7 +376,7 @@ namespace System_NES
                 HandleEvaluateSprite(c, nextScanLine);
                 UpdateForegroundShifters();
             }
-            lock (registerSyncLock)
+            lock (registerStatusSyncLock)
                 registerStatus.SetOrClearFlag(Status.SpriteOverFlow, spriteCountNextScanLine > 8);
             if (spriteCountNextScanLine > 8)
                 spriteCountNextScanLine = 8;
@@ -509,7 +440,7 @@ namespace System_NES
             yield return new ClockTick(); // Cycle 0 does nothing
             
             yield return new ClockTick(); // Cycle 1 sets VBlank flag and optionally triggers NMI
-            lock (registerSyncLock)
+            lock (registerStatusSyncLock)
                 registerStatus.SetFlag(Status.VerticalBlank);
 
             if (registerControl.HasFlag(Control.EnableNMI))
@@ -528,7 +459,7 @@ namespace System_NES
             yield return new ClockTick(); // Cycle 0 does nothing
             
             yield return new ClockTick(); // Cycle 1 clears vertical blank, sprite overflow, sprite zero hit
-            lock (registerSyncLock)
+            lock (registerStatusSyncLock)
             {
                 registerStatus.ClearFlag(Status.VerticalBlank);
                 registerStatus.ClearFlag(Status.SpriteOverFlow);
@@ -578,7 +509,7 @@ namespace System_NES
                 return data;
 
             if (address <= 0x1FFF)
-                return patternTable[(address & 0x1000) >> 12][address & 0x0FFF];
+                return patternTable[address];
             
             if (address <= 0x3EFF)
             {
@@ -619,9 +550,8 @@ namespace System_NES
 
             if (address <= 0x1FFF)
             {
-                int index = (address & 0x1000) >> 12;
-                patternTable[index][address & 0x0FFF] = data;
-                patternTableDisplay[index].DataChanged();
+                patternTable[address] = data;
+                patternTableDisplay[(address & 0x1000) >> 12].DataChanged();
             }
             else if (address <= 0x3EFF)
             {
@@ -661,60 +591,43 @@ namespace System_NES
         {
             byte bgPixel = 0x00;
             byte bgPallete = 0x00;
-
-            bool renderBackground = registerMask.HasFlag(Mask.RenderBackground);
-            bool renderSprites = registerMask.HasFlag(Mask.RenderSprites);
-
-            if (renderBackground)
+            if (HasMaskFlag(Mask.RenderBackground))
             {
                 ushort bit = (ushort)(0x8000 >> fineX);
-
-                bgPixel = (byte)((((bgShifterPatternHigh & bit) != 0 ? (byte)1 : (byte)0) << 1) |
-                    ((bgShifterPatternLow & bit) != 0 ? (byte)1 : (byte)0));
-                bgPallete = (byte)((((bgShifterAttributeHigh & bit) != 0 ? (byte)1 : (byte)0) << 1) |
-                    ((bgShifterAttributeLow & bit) != 0 ? (byte)1 : (byte)0));
+                ushort shift = (byte)(15 - fineX);
+                bgPixel = (byte)(((bgShifterPatternHigh & bit) >> (shift - 1)) | ((bgShifterPatternLow & bit) >> shift));
+                bgPallete = (byte)(((bgShifterAttributeHigh & bit) >> (shift - 1)) | ((bgShifterAttributeLow & bit) >> shift));
             }
 
             byte fgPixel = 0x00;
             byte fgPallete = 0x00;
             bool fgPriority = false;
             bool spriteZeroBeingRendered = false;
-            if (renderSprites)
+            if (HasMaskFlag(Mask.RenderSprites))
             {
                 for (int i = 0; i < spriteCountThisScanLine; i++)
                 {
-                    if (fgSpriteCounter[i] == 0)
+                    if (fgSpriteCounter[i] != 0) 
+                        continue;
+
+                    fgPixel = (byte)(((fgShifterSpriteHigh[i] & 0x80) >> 6) | ((fgShifterSpriteLow[i] & 0x80) >> 7));
+                    fgPallete = (byte)((fgSpriteAttribute[i] & 0x03) + 0x04);
+                    fgPriority = (fgSpriteAttribute[i] & 0x20) == 0;
+                    if (fgPixel != 0)
                     {
-                        fgPixel = (byte)((((fgShifterSpriteHigh[i] & 0x80) != 0 ? (byte)1 : (byte)0) << 1) |
-                                         ((fgShifterSpriteLow[i] & 0x80) != 0 ? (byte)1 : (byte)0));
-                        fgPallete = (byte)((fgSpriteAttribute[i] & 0x03) + 0x04);
-                        fgPriority = (fgSpriteAttribute[i] & 0x20) == 0;
-                        if (fgPixel != 0)
-                        {
-                            if (i == 0)
-                                spriteZeroBeingRendered = true;
-                            break;
-                        }
+                        if (i == 0)
+                            spriteZeroBeingRendered = true;
+                        break;
                     }
                 }
             }
 
-            byte finalPixel = 0x00;
+            byte finalPixel = (byte)(bgPixel | fgPixel);
             byte finalPallete = 0x00;
-            if (bgPixel == 0 && fgPixel == 0)
-            {
-                // nothing to do
-            }
-            else if (bgPixel == 0 && fgPixel != 0)
-            {
-                finalPixel = fgPixel;
+            if (bgPixel == 0 && fgPixel != 0)
                 finalPallete = fgPallete;
-            }
             else if (bgPixel != 0 && fgPixel == 0)
-            {
-                finalPixel = bgPixel;
                 finalPallete = bgPallete;
-            }
             else if (bgPixel != 0 && fgPixel != 0)
             {
                 if (fgPriority)
@@ -730,7 +643,7 @@ namespace System_NES
 
                 if (spriteZeroHitPossibleThisScanLine && spriteZeroBeingRendered)
                 {
-                    lock (registerSyncLock)
+                    lock (registerStatusSyncLock)
                         registerStatus.SetFlag(Status.SpriteZeroHit);
                 }
             }
@@ -831,41 +744,26 @@ namespace System_NES
             byte tileId = secondaryOAM[byteOffset + 1];
             if (spriteSize == 8)
             {
+                ushort attributeAddress = registerControl.HasFlag(Control.PatternSprite) ? (ushort)0x1000 : (ushort)0;   
                 if (fgSpriteAttribute[spriteIndex].HasFlag(SpriteAttribute.FlipVertically))
-                {
-                    return (ushort)((registerControl.HasFlag(Control.PatternSprite) ? 0x1000 : 0) | 
-                                    (tileId << 4) |
-                                    (7 - yOffset));
-                }
+                    return (ushort)(attributeAddress | (tileId << 4) | (7 - yOffset));
 
-                return (ushort)((registerControl.HasFlag(Control.PatternSprite) ? 0x1000 : 0) | 
-                                (tileId << 4) | 
-                                yOffset);
+                return (ushort)(attributeAddress | (tileId << 4) | yOffset);
             }
 
             // spriteSize == 16
             if (fgSpriteAttribute[spriteIndex].HasFlag(SpriteAttribute.FlipVertically))
             {
                 if (yOffset < 8)
-                    return (ushort)(((tileId & 0x01) << 12) | 
-                                    (((tileId & 0xFE) + 1) << 4) | 
-                                    (7 -(yOffset & 0x07)));
+                    return (ushort)(((tileId & 0x01) << 12) | (((tileId & 0xFE) + 1) << 4) | (7 -(yOffset & 0x07)));
 
-                return (ushort)(((tileId & 0x01) << 12) | 
-                                ((tileId & 0xFE) << 4) | 
-                                (7 -(yOffset & 0x07)));
+                return (ushort)(((tileId & 0x01) << 12) | ((tileId & 0xFE) << 4) | (7 -(yOffset & 0x07)));
             }
 
             if (yOffset < 8)
-            {
-                return (ushort)(((tileId & 0x01) << 12) | 
-                                ((tileId & 0xFE) << 4) | 
-                                (yOffset & 0x07));
-            }
+                return (ushort)(((tileId & 0x01) << 12) | ((tileId & 0xFE) << 4) | (yOffset & 0x07));
 
-            return (ushort)(((tileId & 0x01) << 12) | 
-                            (((tileId & 0xFE) + 1) << 4) | 
-                            (yOffset & 0x07));
+            return (ushort)(((tileId & 0x01) << 12) | (((tileId & 0xFE) + 1) << 4) | (yOffset & 0x07));
         }
 
         private void LoadBackgroundShifters()
@@ -878,7 +776,7 @@ namespace System_NES
 
         private void UpdateBackgroundShifters()
         {
-            if (!registerMask.HasFlag(Mask.RenderBackground)) 
+            if (!HasMaskFlag(Mask.RenderBackground)) 
                 return;
 
             bgShifterPatternLow <<= 1;
@@ -889,7 +787,7 @@ namespace System_NES
 
         private void UpdateForegroundShifters()
         {
-            if (!registerMask.HasFlag(Mask.RenderSprites)) 
+            if (!HasMaskFlag(Mask.RenderSprites))
                 return;
 
             for (int i = 0; i < spriteCountThisScanLine; i++)
@@ -906,7 +804,7 @@ namespace System_NES
         
         private void IncrementScrollX()
         {
-            if (!registerMask.HasFlag(Mask.RenderBackground) && !registerMask.HasFlag(Mask.RenderSprites))
+            if (!HasMaskFlag(Mask.RenderBackground) && !HasMaskFlag(Mask.RenderSprites))
                 return;
 
             if (registerV.CoarseX < 31)
@@ -920,7 +818,7 @@ namespace System_NES
 
         private void IncrementScrollY()
         {
-            if (!registerMask.HasFlag(Mask.RenderBackground) && !registerMask.HasFlag(Mask.RenderSprites))
+            if (!HasMaskFlag(Mask.RenderBackground) && !HasMaskFlag(Mask.RenderSprites))
                 return;
 
             if (registerV.FineY < 7)
@@ -944,7 +842,7 @@ namespace System_NES
 
         private void TransferAddressX()
         {
-            if (!registerMask.HasFlag(Mask.RenderBackground) && !registerMask.HasFlag(Mask.RenderSprites))
+            if (!HasMaskFlag(Mask.RenderBackground) && !HasMaskFlag(Mask.RenderSprites))
                 return;
 
             registerV.NameTableX = registerT.NameTableX;
@@ -953,7 +851,7 @@ namespace System_NES
 
         private void TransferAddressY()
         {
-            if (!registerMask.HasFlag(Mask.RenderBackground) && !registerMask.HasFlag(Mask.RenderSprites))
+            if (!HasMaskFlag(Mask.RenderBackground) && !HasMaskFlag(Mask.RenderSprites))
                 return;
 
             registerV.NameTableY = registerT.NameTableY;
@@ -985,6 +883,18 @@ namespace System_NES
         private byte GetColorFromPalleteRam(byte palleteIndex, byte pixel)
         {
             return ReadPPUData((ushort)(0x3F00 + (palleteIndex << 2) + pixel));
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private bool HasMaskFlag(byte maskValue)
+        {
+            return (registerMask & maskValue) != 0;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private bool HasControlFlag(byte maskValue)
+        {
+            return (registerControl & maskValue) != 0;
         }
         #endregion
         

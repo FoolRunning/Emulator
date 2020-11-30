@@ -2,13 +2,12 @@
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Text;
-using System.Threading;
 using SystemBase.Bus;
 
 namespace SystemBase.CPUs
 {
     [SuppressMessage("ReSharper", "InconsistentNaming")]
-    public class CPU_6502 : ICPU, IBusComponent_16
+    public class CPU_6502 : ClockListener, ICPU, IBusComponent_16
     {
         #region Status enumeration
         private static class Status
@@ -38,13 +37,7 @@ namespace SystemBase.CPUs
         private readonly Op interruptOp;
         private readonly Op interruptNMIOp;
         private readonly Op[] opCodes;
-        private readonly IClock clock;
         private readonly Bus_16 bus;
-        private readonly Thread cpuThread;
-        private long totalTicks;
-        private volatile int ticksToRun;
-        private volatile bool run;
-        private volatile bool enabled = true;
         private volatile InterruptType interruptRequested = InterruptType.None;
         private volatile bool resetRequested;
 
@@ -62,9 +55,8 @@ namespace SystemBase.CPUs
         #endregion
 
         #region Constructor
-        public CPU_6502(IClock clock, Bus_16 bus)
+        public CPU_6502(IClock clock, Bus_16 bus) : base(clock, "CPU_6502")
         {
-            this.clock = clock ?? throw new ArgumentNullException(nameof(clock));
             this.bus = bus ?? throw new ArgumentNullException(nameof(bus));
 
             resetOp = new Op(Reset, IMP);
@@ -91,32 +83,11 @@ namespace SystemBase.CPUs
                 new Op(BEQ, REL), new Op(SBC, IZY), new Op(X  , IMP), new Op(X  , IMP), new Op(X  , IMP), new Op(SBC, ZPX), new Op(INC, ZPX), new Op(X  , IMP), new Op(SED, IMP), new Op(SBC, ABY), new Op(X  , IMP), new Op(X  , IMP), new Op(X  , IMP), new Op(SBC, ABX), new Op(INC, ABX), new Op(X  , IMP), 
             };
             
-            run = true;
             currentInstruction = opCodes[0xEA]; // NOP
-            cpuThread = new Thread(CPULoop);
-            cpuThread.IsBackground = true;
-            cpuThread.Name = "CPU";
-
-            clock.ClockTick += Clock_ClockTick;
-        }
-        #endregion
-
-        #region IDisposable implementation
-        public void Dispose()
-        {
-            clock.ClockTick -= Clock_ClockTick;
-            run = false;
-            if (cpuThread.IsAlive)
-                cpuThread.Join();
         }
         #endregion
         
         #region ICPU implementation
-        public void Start()
-        {
-            cpuThread.Start();
-        }
-
         public void Reset()
         {
             resetRequested = true;
@@ -138,63 +109,23 @@ namespace SystemBase.CPUs
         {
             interruptRequested = InterruptType.NonMaskable;
         }
-
-        public void Pause()
-        {
-            enabled = false;
-        }
-
-        public void Resume()
-        {
-            enabled = true;
-        }
         #endregion
 
         #region IBusComponent_16 implementation
-        public void WriteDataFromBus(ushort address, byte data)
+        public virtual void WriteDataFromBus(ushort address, byte data)
         {
             throw new NotImplementedException("CPU does not accept reads/writes from the bus");
         }
 
-        public byte ReadDataForBus(ushort address)
+        public virtual byte ReadDataForBus(ushort address)
         {
             throw new NotImplementedException("CPU does not accept reads/writes from the bus");
-        }
-        #endregion
-
-        #region Event handlers
-        private void Clock_ClockTick()
-        {
-            if (!enabled) 
-                return;
-            
-            Interlocked.Increment(ref ticksToRun);
-
-            while (ticksToRun > 2) // Prefer slowdown versus getting overwhelmed with ticks
-            {
-            }
         }
         #endregion
 
         #region CPU main loop
-        private void CPULoop()
+        protected override void HandleSingleTick()
         {
-            ticksToRun = 0;
-
-            while (run)
-            {
-                if (ticksToRun > 0)
-                {
-                    Interlocked.Decrement(ref ticksToRun);
-                    HandleSingleTick();
-                }
-            }
-        }
-
-        private void HandleSingleTick()
-        {
-            totalTicks++;
-
             registerStatus.SetFlag(Status.Not_Used);
 
             if (currentAddressMicroInstruction != null)
@@ -451,8 +382,6 @@ namespace SystemBase.CPUs
         /// </summary>
         private IEnumerable<ClockTick> Reset(ushort address)
         {
-            totalTicks = 1;
-
             yield return new ClockTick();
             registerAccumulator = 0x00;
 

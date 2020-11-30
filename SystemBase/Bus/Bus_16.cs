@@ -58,8 +58,6 @@ namespace SystemBase.Bus
     #region BusAddressRange_16 structure
     public readonly struct BusAddressRange_16
     {
-        public static readonly BusAddressRange_16 None = new BusAddressRange_16(ushort.MaxValue, 0);
-
         private readonly ushort start;
         private readonly ushort end;
 
