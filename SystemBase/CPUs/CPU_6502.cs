@@ -44,7 +44,6 @@ namespace SystemBase.CPUs
         /// <summary>The current instruction being run.</summary>
         private Op currentInstruction;
         private IEnumerator<ClockTick> currentMicroInstruction;
-        private IEnumerator<ushort> currentAddressMicroInstruction;
 
         private ushort registerProgramCounter;
         private byte registerAccumulator;
@@ -59,37 +58,48 @@ namespace SystemBase.CPUs
         {
             this.bus = bus ?? throw new ArgumentNullException(nameof(bus));
 
-            resetOp = new Op(Reset, IMP);
-            interruptOp = new Op(Interrupt, IMP);
-            interruptNMIOp = new Op(InterruptNMI, IMP);
+            resetOp = new Op(Reset, IMP, false);
+            interruptOp = new Op(Interrupt, IMP, false);
+            interruptNMIOp = new Op(InterruptNMI, IMP, false);
 
             opCodes = new[]
             {
-                new Op(BRK, IMP), new Op(ORA, IZX), new Op(X  , IMP), new Op(X  , IMP), new Op(X  , IMP), new Op(ORA, ZP0), new Op(ASL, ZP0), new Op(X  , IMP), new Op(PHP, IMP), new Op(ORA, IMM), new Op(ASL, ACC), new Op(X  , IMP), new Op(X  , IMP), new Op(ORA, ABS), new Op(ASL, ABS), new Op(X  , IMP), 
-                new Op(BPL, REL), new Op(ORA, IZY), new Op(X  , IMP), new Op(X  , IMP), new Op(X  , IMP), new Op(ORA, ZPX), new Op(ASL, ZPX), new Op(X  , IMP), new Op(CLC, IMP), new Op(ORA, ABY), new Op(X  , IMP), new Op(X  , IMP), new Op(X  , IMP), new Op(ORA, ABX), new Op(ASL, ABX), new Op(X  , IMP), 
-                new Op(JSR, ABS), new Op(AND, IZX), new Op(X  , IMP), new Op(X  , IMP), new Op(BIT, ZP0), new Op(AND, ZP0), new Op(ROL, ZP0), new Op(X  , IMP), new Op(PLP, IMP), new Op(AND, IMM), new Op(ROL, ACC), new Op(X  , IMP), new Op(BIT, ABS), new Op(AND, ABS), new Op(ROL, ABS), new Op(X  , IMP), 
-                new Op(BMI, REL), new Op(AND, IZY), new Op(X  , IMP), new Op(X  , IMP), new Op(X  , IMP), new Op(AND, ZPX), new Op(ROL, ZPX), new Op(X  , IMP), new Op(SEC, IMP), new Op(AND, ABY), new Op(X  , IMP), new Op(X  , IMP), new Op(X  , IMP), new Op(AND, ABX), new Op(ROL, ABX), new Op(X  , IMP), 
-                new Op(RTI, IMP), new Op(EOR, IZX), new Op(X  , IMP), new Op(X  , IMP), new Op(X  , IMP), new Op(EOR, ZP0), new Op(LSR, ZP0), new Op(X  , IMP), new Op(PHA, IMP), new Op(EOR, IMM), new Op(LSR, ACC), new Op(X  , IMP), new Op(JMP, ABS), new Op(EOR, ABS), new Op(LSR, ABS), new Op(X  , IMP), 
-                new Op(BVC, REL), new Op(EOR, IZY), new Op(X  , IMP), new Op(X  , IMP), new Op(X  , IMP), new Op(EOR, ZPX), new Op(LSR, ZPX), new Op(X  , IMP), new Op(CLI, IMP), new Op(EOR, ABY), new Op(X  , IMP), new Op(X  , IMP), new Op(X  , IMP), new Op(EOR, ABX), new Op(LSR, ABX), new Op(X  , IMP), 
-                new Op(RTS, IMP), new Op(ADC, IZX), new Op(X  , IMP), new Op(X  , IMP), new Op(X  , IMP), new Op(ADC, ZP0), new Op(ROR, ZP0), new Op(X  , IMP), new Op(PLA, IMP), new Op(ADC, IMM), new Op(ROR, ACC), new Op(X  , IMP), new Op(JMP, IND), new Op(ADC, ABS), new Op(ROR, ABS), new Op(X  , IMP), 
-                new Op(BVS, REL), new Op(ADC, IZY), new Op(X  , IMP), new Op(X  , IMP), new Op(X  , IMP), new Op(ADC, ZPX), new Op(ROR, ZPX), new Op(X  , IMP), new Op(SEI, IMP), new Op(ADC, ABY), new Op(X  , IMP), new Op(X  , IMP), new Op(X  , IMP), new Op(ADC, ABX), new Op(ROR, ABX), new Op(X  , IMP), 
-                new Op(X  , IMP), new Op(STA, IZX), new Op(X  , IMP), new Op(X  , IMP), new Op(STY, ZP0), new Op(STA, ZP0), new Op(STX, ZP0), new Op(X  , IMP), new Op(DEY, IMP), new Op(X  , IMP), new Op(TXA, IMP), new Op(X  , IMP), new Op(STY, ABS), new Op(STA, ABS), new Op(STX, ABS), new Op(X  , IMP), 
-                new Op(BCC, REL), new Op(STA, IZY), new Op(X  , IMP), new Op(X  , IMP), new Op(STY, ZPX), new Op(STA, ZPX), new Op(STX, ZPY), new Op(X  , IMP), new Op(TYA, IMP), new Op(STA, ABY), new Op(TXS, IMP), new Op(X  , IMP), new Op(X  , IMP), new Op(STA, ABX), new Op(X  , IMP), new Op(X  , IMP), 
-                new Op(LDY, IMM), new Op(LDA, IZX), new Op(LDX, IMM), new Op(X  , IMP), new Op(LDY, ZP0), new Op(LDA, ZP0), new Op(LDX, ZP0), new Op(X  , IMP), new Op(TAY, IMP), new Op(LDA, IMM), new Op(TAX, IMP), new Op(X  , IMP), new Op(LDY, ABS), new Op(LDA, ABS), new Op(LDX, ABS), new Op(X  , IMP), 
-                new Op(BCS, REL), new Op(LDA, IZY), new Op(X  , IMP), new Op(X  , IMP), new Op(LDY, ZPX), new Op(LDA, ZPX), new Op(LDX, ZPY), new Op(X  , IMP), new Op(CLV, IMP), new Op(LDA, ABY), new Op(TSX, IMP), new Op(X  , IMP), new Op(LDY, ABX), new Op(LDA, ABX), new Op(LDX, ABY), new Op(X  , IMP), 
-                new Op(CPY, IMM), new Op(CMP, IZX), new Op(X  , IMP), new Op(X  , IMP), new Op(CPY, ZP0), new Op(CMP, ZP0), new Op(DEC, ZP0), new Op(X  , IMP), new Op(INY, IMP), new Op(CMP, IMM), new Op(DEX, IMP), new Op(X  , IMP), new Op(CPY, ABS), new Op(CMP, ABS), new Op(DEC, ABS), new Op(X  , IMP), 
-                new Op(BNE, REL), new Op(CMP, IZY), new Op(X  , IMP), new Op(X  , IMP), new Op(X  , IMP), new Op(CMP, ZPX), new Op(DEC, ZPX), new Op(X  , IMP), new Op(CLD, IMP), new Op(CMP, ABY), new Op(X  , IMP), new Op(X  , IMP), new Op(X  , IMP), new Op(CMP, ABX), new Op(DEC, ABX), new Op(X  , IMP), 
-                new Op(CPX, IMM), new Op(SBC, IZX), new Op(X  , IMP), new Op(X  , IMP), new Op(CPX, ZP0), new Op(SBC, ZP0), new Op(INC, ZP0), new Op(X  , IMP), new Op(INX, IMP), new Op(SBC, IMM), new Op(NOP, IMP), new Op(X  , IMP), new Op(CPX, ABS), new Op(SBC, ABS), new Op(INC, ABS), new Op(X  , IMP), 
-                new Op(BEQ, REL), new Op(SBC, IZY), new Op(X  , IMP), new Op(X  , IMP), new Op(X  , IMP), new Op(SBC, ZPX), new Op(INC, ZPX), new Op(X  , IMP), new Op(SED, IMP), new Op(SBC, ABY), new Op(X  , IMP), new Op(X  , IMP), new Op(X  , IMP), new Op(SBC, ABX), new Op(INC, ABX), new Op(X  , IMP), 
+                new Op(BRK, IMP, false), new Op(ORA, IZX, false), new Op(X  , IMP, false), new Op(X  , IMP, false), new Op(X  , IMP, false), new Op(ORA, ZP0, false), new Op(ASL, ZP0, false), new Op(X  , IMP, false), new Op(PHP, IMP, false), new Op(ORA, IMM, false), new Op(ASL, ACC, false), new Op(X  , IMP, false), new Op(X  , IMP, false), new Op(ORA, ABS, false), new Op(ASL, ABS, false), new Op(X  , IMP, false), 
+                new Op(BPL, REL, false), new Op(ORA, IZY, false), new Op(X  , IMP, false), new Op(X  , IMP, false), new Op(X  , IMP, false), new Op(ORA, ZPX, false), new Op(ASL, ZPX, false), new Op(X  , IMP, false), new Op(CLC, IMP, false), new Op(ORA, ABY, false), new Op(X  , IMP, false), new Op(X  , IMP, false), new Op(X  , IMP, false), new Op(ORA, ABX, false), new Op(ASL, ABX, true ), new Op(X  , IMP, false), 
+                new Op(JSR, ABS, false), new Op(AND, IZX, false), new Op(X  , IMP, false), new Op(X  , IMP, false), new Op(BIT, ZP0, false), new Op(AND, ZP0, false), new Op(ROL, ZP0, false), new Op(X  , IMP, false), new Op(PLP, IMP, false), new Op(AND, IMM, false), new Op(ROL, ACC, false), new Op(X  , IMP, false), new Op(BIT, ABS, false), new Op(AND, ABS, false), new Op(ROL, ABS, false), new Op(X  , IMP, false), 
+                new Op(BMI, REL, false), new Op(AND, IZY, false), new Op(X  , IMP, false), new Op(X  , IMP, false), new Op(X  , IMP, false), new Op(AND, ZPX, false), new Op(ROL, ZPX, false), new Op(X  , IMP, false), new Op(SEC, IMP, false), new Op(AND, ABY, false), new Op(X  , IMP, false), new Op(X  , IMP, false), new Op(X  , IMP, false), new Op(AND, ABX, false), new Op(ROL, ABX, true ), new Op(X  , IMP, false), 
+                new Op(RTI, IMP, false), new Op(EOR, IZX, false), new Op(X  , IMP, false), new Op(X  , IMP, false), new Op(X  , IMP, false), new Op(EOR, ZP0, false), new Op(LSR, ZP0, false), new Op(X  , IMP, false), new Op(PHA, IMP, false), new Op(EOR, IMM, false), new Op(LSR, ACC, false), new Op(X  , IMP, false), new Op(JMP, ABS, false), new Op(EOR, ABS, false), new Op(LSR, ABS, false), new Op(X  , IMP, false), 
+                new Op(BVC, REL, false), new Op(EOR, IZY, false), new Op(X  , IMP, false), new Op(X  , IMP, false), new Op(X  , IMP, false), new Op(EOR, ZPX, false), new Op(LSR, ZPX, false), new Op(X  , IMP, false), new Op(CLI, IMP, false), new Op(EOR, ABY, false), new Op(X  , IMP, false), new Op(X  , IMP, false), new Op(X  , IMP, false), new Op(EOR, ABX, false), new Op(LSR, ABX, true ), new Op(X  , IMP, false), 
+                new Op(RTS, IMP, false), new Op(ADC, IZX, false), new Op(X  , IMP, false), new Op(X  , IMP, false), new Op(X  , IMP, false), new Op(ADC, ZP0, false), new Op(ROR, ZP0, false), new Op(X  , IMP, false), new Op(PLA, IMP, false), new Op(ADC, IMM, false), new Op(ROR, ACC, false), new Op(X  , IMP, false), new Op(JMP, IND, false), new Op(ADC, ABS, false), new Op(ROR, ABS, false), new Op(X  , IMP, false), 
+                new Op(BVS, REL, false), new Op(ADC, IZY, false), new Op(X  , IMP, false), new Op(X  , IMP, false), new Op(X  , IMP, false), new Op(ADC, ZPX, false), new Op(ROR, ZPX, false), new Op(X  , IMP, false), new Op(SEI, IMP, false), new Op(ADC, ABY, false), new Op(X  , IMP, false), new Op(X  , IMP, false), new Op(X  , IMP, false), new Op(ADC, ABX, false), new Op(ROR, ABX, true ), new Op(X  , IMP, false), 
+                new Op(X  , IMP, false), new Op(STA, IZX, false), new Op(X  , IMP, false), new Op(X  , IMP, false), new Op(STY, ZP0, false), new Op(STA, ZP0, false), new Op(STX, ZP0, false), new Op(X  , IMP, false), new Op(DEY, IMP, false), new Op(X  , IMP, false), new Op(TXA, IMP, false), new Op(X  , IMP, false), new Op(STY, ABS, false), new Op(STA, ABS, false), new Op(STX, ABS, false), new Op(X  , IMP, false), 
+                new Op(BCC, REL, false), new Op(STA, IZY, true ), new Op(X  , IMP, false), new Op(X  , IMP, false), new Op(STY, ZPX, false), new Op(STA, ZPX, false), new Op(STX, ZPY, false), new Op(X  , IMP, false), new Op(TYA, IMP, false), new Op(STA, ABY, true ), new Op(TXS, IMP, false), new Op(X  , IMP, false), new Op(X  , IMP, false), new Op(STA, ABX, true ), new Op(X  , IMP, false), new Op(X  , IMP, false), 
+                new Op(LDY, IMM, false), new Op(LDA, IZX, false), new Op(LDX, IMM, false), new Op(X  , IMP, false), new Op(LDY, ZP0, false), new Op(LDA, ZP0, false), new Op(LDX, ZP0, false), new Op(X  , IMP, false), new Op(TAY, IMP, false), new Op(LDA, IMM, false), new Op(TAX, IMP, false), new Op(X  , IMP, false), new Op(LDY, ABS, false), new Op(LDA, ABS, false), new Op(LDX, ABS, false), new Op(X  , IMP, false), 
+                new Op(BCS, REL, false), new Op(LDA, IZY, false), new Op(X  , IMP, false), new Op(X  , IMP, false), new Op(LDY, ZPX, false), new Op(LDA, ZPX, false), new Op(LDX, ZPY, false), new Op(X  , IMP, false), new Op(CLV, IMP, false), new Op(LDA, ABY, false), new Op(TSX, IMP, false), new Op(X  , IMP, false), new Op(LDY, ABX, false), new Op(LDA, ABX, false), new Op(LDX, ABY, false), new Op(X  , IMP, false), 
+                new Op(CPY, IMM, false), new Op(CMP, IZX, false), new Op(X  , IMP, false), new Op(X  , IMP, false), new Op(CPY, ZP0, false), new Op(CMP, ZP0, false), new Op(DEC, ZP0, false), new Op(X  , IMP, false), new Op(INY, IMP, false), new Op(CMP, IMM, false), new Op(DEX, IMP, false), new Op(X  , IMP, false), new Op(CPY, ABS, false), new Op(CMP, ABS, false), new Op(DEC, ABS, false), new Op(X  , IMP, false), 
+                new Op(BNE, REL, false), new Op(CMP, IZY, false), new Op(X  , IMP, false), new Op(X  , IMP, false), new Op(X  , IMP, false), new Op(CMP, ZPX, false), new Op(DEC, ZPX, false), new Op(X  , IMP, false), new Op(CLD, IMP, false), new Op(CMP, ABY, false), new Op(X  , IMP, false), new Op(X  , IMP, false), new Op(X  , IMP, false), new Op(CMP, ABX, false), new Op(DEC, ABX, true ), new Op(X  , IMP, false), 
+                new Op(CPX, IMM, false), new Op(SBC, IZX, false), new Op(X  , IMP, false), new Op(X  , IMP, false), new Op(CPX, ZP0, false), new Op(SBC, ZP0, false), new Op(INC, ZP0, false), new Op(X  , IMP, false), new Op(INX, IMP, false), new Op(SBC, IMM, false), new Op(NOP, IMP, false), new Op(X  , IMP, false), new Op(CPX, ABS, false), new Op(SBC, ABS, false), new Op(INC, ABS, false), new Op(X  , IMP, false), 
+                new Op(BEQ, REL, false), new Op(SBC, IZY, false), new Op(X  , IMP, false), new Op(X  , IMP, false), new Op(X  , IMP, false), new Op(SBC, ZPX, false), new Op(INC, ZPX, false), new Op(X  , IMP, false), new Op(SED, IMP, false), new Op(SBC, ABY, false), new Op(X  , IMP, false), new Op(X  , IMP, false), new Op(X  , IMP, false), new Op(SBC, ABX, false), new Op(INC, ABX, true ), new Op(X  , IMP, false) 
             };
             
-            currentInstruction = opCodes[0xEA]; // NOP
+            StartOp(opCodes[0xEA]); // NOP
         }
         #endregion
         
         #region ICPU implementation
         public void Reset()
         {
+            //Console.WriteLine();
+            //Console.WriteLine("**************************************************************************");
+            //Console.WriteLine("Ticks per instruction: ");
+            //for (int i = 0; i < opCodes.Length; i++)
+            //{
+            //    currentInstruction = opCodes[i];
+            //    Console.WriteLine($"{i:X2}: {opCodes[i].RunOp().Count()}");
+            //}
+            //Console.WriteLine("**************************************************************************");
+            //Console.WriteLine();
+
             resetRequested = true;
         }
 
@@ -128,35 +138,24 @@ namespace SystemBase.CPUs
         {
             registerStatus.SetFlag(Status.Not_Used);
 
-            if (currentAddressMicroInstruction != null)
-            {
-                // Only the last enumeration contains the data so just keep reading it
-                ushort dataAddress = currentAddressMicroInstruction.Current;
-                if (currentAddressMicroInstruction.MoveNext())
-                    return;
+            if (currentMicroInstruction.MoveNext()) 
+                return;
 
-                currentMicroInstruction = currentInstruction.Instructions(dataAddress).GetEnumerator();
-                currentAddressMicroInstruction = null;
-            }
-            
-            if (currentMicroInstruction == null || !currentMicroInstruction.MoveNext())
+            // Current instruction finished running
+            if (interruptRequested != InterruptType.None)
             {
-                // Current instruction finished running
-                if (interruptRequested != InterruptType.None)
-                {
-                    StartOp(interruptRequested == InterruptType.Normal ? interruptOp : interruptNMIOp);
-                    interruptRequested = InterruptType.None;
-                }
-                else if (resetRequested)
-                {
-                    resetRequested = false;
-                    StartOp(resetOp);
-                }
-                else
-                {
-                    byte opCode = bus.ReadData(registerProgramCounter++);
-                    StartOp(opCodes[opCode]);
-                }
+                StartOp(interruptRequested == InterruptType.Normal ? interruptOp : interruptNMIOp);
+                interruptRequested = InterruptType.None;
+            }
+            else if (resetRequested)
+            {
+                resetRequested = false;
+                StartOp(resetOp);
+            }
+            else
+            {
+                byte opCode = bus.ReadData(registerProgramCounter++);
+                StartOp(opCodes[opCode]);
             }
         }
         #endregion
@@ -165,7 +164,7 @@ namespace SystemBase.CPUs
         /// <summary>
         /// Address is the accumulator
         /// </summary>
-        private IEnumerable<ushort> ACC()
+        private static IEnumerable<ushort> ACC(bool assumePageCrossed)
         {
             // Takes 1 cycle to get address
             yield return 0;
@@ -174,7 +173,7 @@ namespace SystemBase.CPUs
         /// <summary>
         /// Address is where the program counter is
         /// </summary>
-        private IEnumerable<ushort> IMM()
+        private IEnumerable<ushort> IMM(bool assumePageCrossed)
         {
             // Takes 1 cycle to get address
             yield return registerProgramCounter++;
@@ -183,7 +182,7 @@ namespace SystemBase.CPUs
         /// <summary>
         /// Address is specified by next two bytes
         /// </summary>
-        private IEnumerable<ushort> ABS()
+        private IEnumerable<ushort> ABS(bool assumePageCrossed)
         {
             // Takes 3 cycles to get address
             yield return 0;
@@ -198,7 +197,7 @@ namespace SystemBase.CPUs
         /// <summary>
         /// Address is specified by the next byte (high byte assumed to be zero)
         /// </summary>
-        private IEnumerable<ushort> ZP0()
+        private IEnumerable<ushort> ZP0(bool assumePageCrossed)
         {
             // Takes 2 cycles to get address
             yield return 0;
@@ -210,7 +209,7 @@ namespace SystemBase.CPUs
         /// <summary>
         /// Address is specified by the next byte added to the x register (high byte assumed to be zero)
         /// </summary>
-        private IEnumerable<ushort> ZPX()
+        private IEnumerable<ushort> ZPX(bool assumePageCrossed)
         {
             // Takes 3 cycles to get address
             yield return 0;
@@ -225,7 +224,7 @@ namespace SystemBase.CPUs
         /// <summary>
         /// Address is specified by the next byte added to the y register (high byte assumed to be zero)
         /// </summary>
-        private IEnumerable<ushort> ZPY()
+        private IEnumerable<ushort> ZPY(bool assumePageCrossed)
         {
             // Takes 3 cycles to get address
             yield return 0;
@@ -240,7 +239,7 @@ namespace SystemBase.CPUs
         /// <summary>
         /// Address is specified by next two bytes added to the x register
         /// </summary>
-        private IEnumerable<ushort> ABX()
+        private IEnumerable<ushort> ABX(bool assumePageCrossed)
         {
             // Takes 3 or 4 cycles to get address
             yield return 0;
@@ -251,7 +250,7 @@ namespace SystemBase.CPUs
             
             ushort address = (ushort)((high << 8) | low);
             address += registerX;
-            if (DifferentPages(address, (ushort)(high << 8)))
+            if (assumePageCrossed || DifferentPages(address, (ushort)(high << 8)))
                 yield return 0;
 
             yield return address;
@@ -260,7 +259,7 @@ namespace SystemBase.CPUs
         /// <summary>
         /// Address is specified by next two bytes added to the y register
         /// </summary>
-        private IEnumerable<ushort> ABY()
+        private IEnumerable<ushort> ABY(bool assumePageCrossed)
         {
             // Takes 3 or 4 cycles to get address
             yield return 0;
@@ -271,7 +270,7 @@ namespace SystemBase.CPUs
             
             ushort address = (ushort)((high << 8) | low);
             address += registerY;
-            if (DifferentPages(address, (ushort)(high << 8)))
+            if (assumePageCrossed || DifferentPages(address, (ushort)(high << 8)))
                 yield return 0;
 
             yield return address;
@@ -280,7 +279,7 @@ namespace SystemBase.CPUs
         /// <summary>
         /// Address doesn't matter as nothing needs to be read
         /// </summary>
-        private IEnumerable<ushort> IMP()
+        private static IEnumerable<ushort> IMP(bool assumePageCrossed)
         {
             // Takes 1 cycle to process
             yield return 0;
@@ -289,7 +288,7 @@ namespace SystemBase.CPUs
         /// <summary>
         /// Address is specified by the next byte as an offset from the current program counter (-128 to 127)
         /// </summary>
-        private IEnumerable<ushort> REL()
+        private IEnumerable<ushort> REL(bool assumePageCrossed)
         {
             // Takes 1 cycle to get data
             ushort offset = bus.ReadData(registerProgramCounter++);
@@ -302,26 +301,28 @@ namespace SystemBase.CPUs
         /// <summary>
         /// Address is specified by the two bytes at the location specified by the next byte added to the x register (high byte assumed to be zero)
         /// </summary>
-        private IEnumerable<ushort> IZX()
+        private IEnumerable<ushort> IZX(bool assumePageCrossed)
         {
-            // Takes 4 cycles to get address
+            // Takes 5 cycles to get address
             yield return 0;
             ushort address = bus.ReadData(registerProgramCounter++);
+
+            yield return 0;
             address += registerX;
 
             yield return 0;
-            byte low2 = bus.ReadData((ushort)(address & 0x00FF));
+            byte low = bus.ReadData((ushort)(address & 0x00FF));
             
             yield return 0;
-            byte high2 = bus.ReadData((ushort)((address + 1) & 0x00FF));
+            byte high = bus.ReadData((ushort)((address + 1) & 0x00FF));
 
-            yield return (ushort)((high2 << 8) | low2);
+            yield return (ushort)((high << 8) | low);
         }
         
         /// <summary>
         /// Address is specified by the two bytes at the location specified by the next byte added to the y register (high byte assumed to be zero)
         /// </summary>
-        private IEnumerable<ushort> IZY()
+        private IEnumerable<ushort> IZY(bool assumePageCrossed)
         {
             // Takes 4 or 5 cycles to get address
             yield return 0;
@@ -335,7 +336,7 @@ namespace SystemBase.CPUs
 
             ushort address = (ushort)((high << 8) | low);
             address += registerY;
-            if (DifferentPages(address, (ushort)(high << 8)));
+            if (assumePageCrossed || DifferentPages(address, (ushort)(high << 8)))
                 yield return 0;
 
             yield return address;
@@ -344,7 +345,7 @@ namespace SystemBase.CPUs
         /// <summary>
         /// Address is specified by the two bytes at the location specified by the next two bytes
         /// </summary>
-        private IEnumerable<ushort> IND()
+        private IEnumerable<ushort> IND(bool assumePageCrossed)
         {
             // Takes 5 cycles to get address
             yield return 0;
@@ -437,7 +438,7 @@ namespace SystemBase.CPUs
             registerStatus.SetFlag(Status.Not_Used);
 
             yield return new ClockTick();
-            StackPush((byte)registerStatus);
+            StackPush(registerStatus);
 
             yield return new ClockTick();
             byte low = bus.ReadData(startingAddress);
@@ -932,7 +933,7 @@ namespace SystemBase.CPUs
         /// <summary>
         /// No operation
         /// </summary>
-        private IEnumerable<ClockTick> NOP(ushort address)
+        private static IEnumerable<ClockTick> NOP(ushort address)
         {
             yield return new ClockTick();
         }
@@ -1002,7 +1003,6 @@ namespace SystemBase.CPUs
             registerStatus = data;
 
             yield return new ClockTick();
-            //SetStatus(Status.BrkCommand, false);
             registerStatus.SetFlag(Status.Not_Used);
         }
 
@@ -1099,6 +1099,8 @@ namespace SystemBase.CPUs
 
             yield return new ClockTick();
             registerProgramCounter = (ushort)((high << 8) | low);
+            
+            yield return new ClockTick();
             registerProgramCounter++;
         }
 
@@ -1248,9 +1250,8 @@ namespace SystemBase.CPUs
             //Console.WriteLine($"{registerProgramCounter - 1:X4} {OperationInfo(operation)}");
 
             currentInstruction = operation;
-            currentAddressMicroInstruction = operation.AddressMode().GetEnumerator();
-            currentAddressMicroInstruction.MoveNext();
-            currentMicroInstruction = null;
+            currentMicroInstruction = operation.RunOp().GetEnumerator();
+            currentMicroInstruction.MoveNext();
         }
 
         private string OperationInfo(Op op)
@@ -1273,7 +1274,7 @@ namespace SystemBase.CPUs
             bldr.Append('\t').Append("A:").Append(registerAccumulator.ToString("X2"))
                 .Append(' ').Append("X:").Append(registerX.ToString("X2"))
                 .Append(' ').Append("Y:").Append(registerY.ToString("X2"))
-                .Append(' ').Append("P:").Append(((byte)registerStatus).ToString("X2"))
+                .Append(' ').Append("P:").Append(registerStatus.ToString("X2"))
                 .Append(' ').Append("SP:").Append(registerStackPointer.ToString("X2"));
             return bldr.ToString();
         }
@@ -1305,18 +1306,35 @@ namespace SystemBase.CPUs
         private sealed class Op
         {
             /// <summary>
+            /// Enumerable is to mimic the time for each tick of the clock.
+            /// </summary>
+            public readonly Func<bool, IEnumerable<ushort>> AddressMode;
+
+            /// <summary>
             /// Actions are tasks to be performed with each tick of the clock.
             /// </summary>
             public readonly Func<ushort, IEnumerable<ClockTick>> Instructions;
-            /// <summary>
-            /// Enumerable is to mimic the time for each tick of the clock.
-            /// </summary>
-            public readonly Func<IEnumerable<ushort>> AddressMode;
 
-            public Op(Func<ushort, IEnumerable<ClockTick>> instructions, Func<IEnumerable<ushort>> addressMode)
+            private readonly bool assumePageBoundaryCrossed;
+
+            public Op(Func<ushort, IEnumerable<ClockTick>> instructions, Func<bool, IEnumerable<ushort>> addressMode, bool assumePageBoundaryCrossed)
             {
                 Instructions = instructions;
                 AddressMode = addressMode;
+                this.assumePageBoundaryCrossed = assumePageBoundaryCrossed;
+            }
+
+            public IEnumerable<ClockTick> RunOp()
+            {
+                ushort dataAddress = 0xFFFF;
+                foreach (ushort address in AddressMode(assumePageBoundaryCrossed))
+                {
+                    yield return new ClockTick();
+                    dataAddress = address;
+                }
+
+                foreach (ClockTick tick in Instructions(dataAddress))
+                    yield return tick;
             }
         }
         #endregion

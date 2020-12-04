@@ -15,8 +15,7 @@ namespace SystemBase
         private readonly long ticksPerOneSecond;
 
         private volatile bool run;
-        private double neededTicksForNextClock;
-        private long prevTicksMain;
+        private double ticksForNextClock;
         private long prevTicksOneSecond;
         private long totalTicks;
         #endregion
@@ -65,36 +64,28 @@ namespace SystemBase
         private void ClockLoop()
         {
             if (ClockTick == null)
-                throw new InvalidOperationException("Can not start clock when no tick listeners");
+                throw new InvalidOperationException("Can not start clock with no tick listeners");
 
             timer.Start();
 
-            prevTicksMain = timer.ElapsedTicks;
-            neededTicksForNextClock = ticksPerClock;
+            ticksForNextClock = timer.ElapsedTicks + ticksPerClock;
+            prevTicksOneSecond = timer.ElapsedTicks + ticksPerOneSecond;
 
             while (run)
             {
                 long currentTicks = timer.ElapsedTicks;
-                if (currentTicks - prevTicksOneSecond >= ticksPerOneSecond)
+                if (currentTicks >= prevTicksOneSecond)
                 {
                     prevTicksOneSecond += ticksPerOneSecond;
                     OneSecondTick?.Invoke();
                 }
 
-                double tickDelta = currentTicks - prevTicksMain;
-                if (tickDelta <= neededTicksForNextClock) 
-                    continue;
-
-                prevTicksMain = currentTicks;
-                Interlocked.Increment(ref totalTicks);
-
-                ClockTick.Invoke();
-
-                neededTicksForNextClock = neededTicksForNextClock + ticksPerClock - tickDelta; // Determine next delta needed while preserving precision
-#if DEBUG
-                if (neededTicksForNextClock < -ticksPerOneSecond)
-                    neededTicksForNextClock = 0; // Allow slowdowns
-#endif
+                if (currentTicks >= ticksForNextClock)
+                {
+                    Interlocked.Increment(ref totalTicks);
+                    ticksForNextClock += ticksPerClock;
+                    ClockTick.Invoke();
+                }
             }
 
             timer.Stop();

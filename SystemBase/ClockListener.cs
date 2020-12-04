@@ -8,7 +8,7 @@ namespace SystemBase
         #region Member variables
         private readonly Thread tickThread;
         private readonly IClock clock;
-        private volatile int ticksToRun;
+        private volatile bool processNextTick;
         private volatile bool run;
         private volatile bool enabled = true;
         private long totalTicks;
@@ -64,26 +64,24 @@ namespace SystemBase
         #region Event handlers
         private void Clock_ClockTick()
         {
-            Interlocked.Increment(ref ticksToRun);
-#if DEBUG
-            while (ticksToRun > 2) // Prefer slowdown versus getting overwhelmed with ticks
+            while (processNextTick) // Prefer slowdown versus getting overwhelmed with ticks
             {
             }
-#endif
+
+            processNextTick = true;
         }
         #endregion
 
         #region Main tick loop
         private void TickLoop()
         {
-            ticksToRun = 0;
-
+            processNextTick = false;
             while (run)
             {
-                if (ticksToRun <= 0) 
+                if (!processNextTick) 
                     continue;
 
-                Interlocked.Decrement(ref ticksToRun);
+                processNextTick = false;
                 Interlocked.Increment(ref totalTicks);
                 
                 if (enabled)

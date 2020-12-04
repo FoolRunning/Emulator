@@ -1,4 +1,5 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 using SystemBase;
 using SystemBase.Bus;
 using SystemBase.RAM;
@@ -18,8 +19,8 @@ namespace System_NES
 
         public NES()
         {
-            Clock = new SystemClock(100000);
-            //Clock = new SystemClock(5369318); // 1/4 speed of real system, but emulate-able
+            //Clock = new SystemClock(200000);
+            Clock = new SystemClock(5369318); // 1/4 speed of real system, but emulate-able
             //Clock = new SystemClock(21477272); // True speed
             //Clock = new SystemClock(10000000);
 
@@ -60,11 +61,12 @@ namespace System_NES
         {
             get
             {
-                //foreach (IPixelDisplay display in ppu.PatternTableDisplays)
-                //    yield return display;
+                foreach (IPixelDisplay display in ppu.PatternTableDisplays)
+                    yield return display;
 
-                yield return new TickCountDisplay("Clock Speed", Clock, Clock);
-                yield return new TickCountDisplay("CPU Speed", cpu, Clock);
+                yield return new TickCountDisplay("PPU Clock Speed", ppu, Clock, 5369318);
+                yield return new TickCountDisplay("CPU Clock Speed", cpu, Clock, 1789773);
+                yield return new TickCountDisplay("Main Clock Speed", Clock, Clock, 5369318);
             }
         }
         

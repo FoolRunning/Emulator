@@ -6,41 +6,51 @@ namespace SystemBase
 {
     public sealed class TickCountDisplay : ITextDisplay
     {
+        #region Member variables
         private readonly ITickProvider tickProvider;
+        private readonly long expectedTicksPerSecond;
         private long prevTickCount;
         private long ticksInOneSecond;
+        #endregion
 
-        public TickCountDisplay(string title, ITickProvider tickProvider, SystemClock clock)
+        #region Constructor
+        public TickCountDisplay(string title, ITickProvider tickProvider, SystemClock clock, long expectedTicksPerSecond)
         {
             this.tickProvider = tickProvider ?? throw new ArgumentNullException(nameof(tickProvider));
+            this.expectedTicksPerSecond = expectedTicksPerSecond;
             Title = title;
-            clock.OneSecondTick += Timer_Tick;
+            clock.OneSecondTick += Clock_OneSecondTick;
         }
+        #endregion
 
+        #region ITextDisplay implementation
         public event Action FrameFinished;
         
         public string Title { get; }
         
-        public Size Size => new Size(150, 50);
+        public Size Size => new Size(100, 25);
 
         public string Text
         {
             get
             {
                 long tios = Interlocked.Read(ref ticksInOneSecond);
-                return tios.ToString("###,###,###");
+                return $"{tios:###,###,###} ({tios * 100.0 / expectedTicksPerSecond:###.00}%)";
             }
         }
 
         public Color Color => Color.White;
+        #endregion
 
-        private void Timer_Tick()
+        #region Event handlers
+        private void Clock_OneSecondTick()
         {
             long newTickCount = tickProvider.TotalTickCount;
             Interlocked.Exchange(ref ticksInOneSecond, newTickCount - prevTickCount);
             prevTickCount = newTickCount;
             FrameFinished?.Invoke();
         }
+        #endregion
     }
 
     public interface ITickProvider
