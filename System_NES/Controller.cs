@@ -39,6 +39,11 @@ namespace System_NES
         #endregion
 
         #region IBusComponent_16 implementation
+        public void Reset()
+        {
+            registerController = 0x00;
+        }
+
         public void WriteDataFromBus(ushort address, byte data)
         {
             if (address == registerAddress)

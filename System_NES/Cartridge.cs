@@ -121,13 +121,18 @@ namespace System_NES
         }
         #endregion
 
+        public MirrorMode Mirror => mapper.MirrorMode;
+
+        #region IBusComponent_16 implementation
         public void Dispose()
         {
         }
 
-        public MirrorMode Mirror => mapper.MirrorMode;
+        public void Reset()
+        {
+            // Nothing to do
+        }
 
-        #region IBusComponent_16 implementation
         public void WriteDataFromBus(ushort address, byte data)
         {
             if (mapper.MapCPUAddressWrite(address, data, out uint newAddress))

@@ -14,6 +14,12 @@ namespace SystemBase.Bus
 
         #region IBus implementation
         public IEnumerable<IBusComponent> AllComponents => components;
+        
+        public void Reset()
+        {
+            for (int i = 0; i < componentRanges.Count; i++)
+                components[i].Reset();
+        }
         #endregion
 
         #region Public methods

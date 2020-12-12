@@ -18,20 +18,20 @@ namespace SystemBase
             clock.ClockTick += Clock_ClockTick;
         }
 
-        private void Clock_ClockTick()
-        {
-            parentTicksBeforeTick--;
-            if (parentTicksBeforeTick != 0) 
-                return;
-
-            parentTicksBeforeTick = clockDivisor;
-            ClockTick?.Invoke();
-        }
-
         public void Dispose()
         {
         }
 
         public event Action ClockTick;
+
+        private void Clock_ClockTick()
+        {
+            parentTicksBeforeTick--;
+            if (parentTicksBeforeTick > 0) 
+                return;
+
+            parentTicksBeforeTick = clockDivisor;
+            ClockTick?.Invoke();
+        }
     }
 }

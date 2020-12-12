@@ -21,7 +21,6 @@ namespace EmulatorUI
 
         private int paintCount;
         private string fpsStr;
-        private DateTime then;
         #endregion
 
         public DisplayOutput()
@@ -37,6 +36,16 @@ namespace EmulatorUI
             pixelData = new byte[16];
             pixelDataHandle = GCHandle.Alloc(pixelData, GCHandleType.Pinned);
             pixels = new Bitmap(2, 2, PixelFormat.Format32bppRgb);
+            Timer timer = new Timer();
+            timer.Tick += Timer_Tick;
+            timer.Interval = 1000;
+            timer.Start();
+        }
+
+        private void Timer_Tick(object sender, EventArgs e)
+        {
+            fpsStr = "FPS: " + paintCount;
+            paintCount = 0;
         }
 
         public bool ShowFPS { get; set; }
@@ -113,23 +122,23 @@ namespace EmulatorUI
         {
             e.Graphics.Clear(Color.DarkSlateGray);
  
-            float ratioX = Width / (float)size.Width;
-            float ratioY = Height / (float)size.Height;
-            //float ratioX = Width / size.Width;
-            //float ratioY = Height / size.Height;
+            //float ratioX = Width / (float)size.Width;
+            //float ratioY = Height / (float)size.Height;
+            float ratioX = Width / size.Width;
+            float ratioY = Height / size.Height;
             float scale = ratioX > ratioY ? ratioY : ratioX;
             int outputWidth = (int)(size.Width * scale);
             int outputHeight = (int)(size.Height * scale);
 
             e.Graphics.CompositingMode = CompositingMode.SourceCopy;
             e.Graphics.InterpolationMode = smoothingMode;
+            e.Graphics.PixelOffsetMode = PixelOffsetMode.Half;
             Rectangle imageRect = new Rectangle((Width - outputWidth) / 2, (Height - outputHeight) / 2, outputWidth, outputHeight);
             lock (pixels)
                 e.Graphics.DrawImage(pixels, imageRect);
             
-            imageRect.Inflate(1, 1);
-            using (Pen p = new Pen(Color.Ivory))
-                e.Graphics.DrawRectangle(p, imageRect);
+            using (Pen p = new Pen(Color.FloralWhite))
+                e.Graphics.DrawRectangle(p, imageRect.X, imageRect.Y, imageRect.Width + 1, imageRect.Height + 1);
 
             if (ShowFPS)
             {
@@ -156,14 +165,6 @@ namespace EmulatorUI
 
             lock (pixels)
                 display.GetPixels(pixelData);
-
-            DateTime now = DateTime.Now;
-            if (then <= now)
-            {
-                then = now.AddSeconds(1);
-                fpsStr = "FPS: " + paintCount;
-                paintCount = 0;
-            }
 
             paintCount++;
             Invalidate(false);

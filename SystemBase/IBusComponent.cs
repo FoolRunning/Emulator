@@ -4,6 +4,7 @@ namespace SystemBase
 {
     public interface IBusComponent : IDisposable
     {
+        void Reset();
     }
 
     /// <summary>

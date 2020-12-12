@@ -1,5 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using SystemBase;
 using SystemBase.Bus;
 using SystemBase.RAM;
@@ -28,7 +27,7 @@ namespace System_NES
             cpu = new CPU_2A03(new ClockDivider(Clock, 3), bus); // 3x slower than PPU
             ppu = new PPU(Clock, cpu);
             ram = new RAM_16(2048);
-            apu = new APU();
+            apu = new APU(new ClockDivider(Clock, 6)); // 6x slower than PPU
             controllers[0] = new Controller(0x4016);
             controllers[1] = new Controller(0x4017);
 
@@ -37,9 +36,9 @@ namespace System_NES
             bus.AddComponent(apu, new BusAddressRange_16(0x4000, 0x4013));
             bus.AddComponent(cpu, new BusAddressRange_16(0x4014, 0x4014));
             bus.AddComponent(apu, new BusAddressRange_16(0x4015, 0x4015));
-            bus.AddComponent(apu, new BusAddressRange_16(0x4017, 0x4017));
             bus.AddComponent((Controller)controllers[0], new BusAddressRange_16(0x4016, 0x4016));
             bus.AddComponent((Controller)controllers[1], new BusAddressRange_16(0x4017, 0x4017));
+            bus.AddComponent(apu, new BusAddressRange_16(0x4017, 0x4017));
         }
 
         #region ISystemInfo implementation
@@ -55,7 +54,7 @@ namespace System_NES
 
         public IPixelDisplay MainDisplay => ppu;
 
-        public ISoundGenerator SoundGenerator => apu;
+        public ISoundProvider SoundGenerator => apu;
 
         public IEnumerable<IDisplay> OtherDisplayableComponents
         {
@@ -64,9 +63,9 @@ namespace System_NES
                 foreach (IPixelDisplay display in ppu.PatternTableDisplays)
                     yield return display;
 
-                yield return new TickCountDisplay("PPU Clock Speed", ppu, Clock, 5369318);
-                yield return new TickCountDisplay("CPU Clock Speed", cpu, Clock, 1789773);
-                yield return new TickCountDisplay("Main Clock Speed", Clock, Clock, 5369318);
+                yield return new TickCountDisplay(Clock,  
+                    new[] { "Main", "PPU", "CPU", "APU" }, 
+                    new ITickProvider[] { Clock, ppu, cpu, apu });
             }
         }
         
@@ -74,7 +73,6 @@ namespace System_NES
 
         public bool LoadProgramFile(string filePath)
         {
-            cpu.Pause();
             if (cartridge != null)
                 bus.RemoveComponent(cartridge);
 
@@ -82,9 +80,6 @@ namespace System_NES
             bus.AddComponent(cartridge, new BusAddressRange_16(0x4020, 0xFFFF));
             
             ppu.SetCartridge(cartridge);
-
-            cpu.Resume();
-            cpu.Reset();
 
             return true;
         }
@@ -94,6 +89,7 @@ namespace System_NES
             if (running)
                 return;
 
+            apu.Start();
             ppu.Start();
             cpu.Start();
             Clock.Start();
@@ -105,6 +101,7 @@ namespace System_NES
             Clock.Dispose();
             cpu.Dispose();
             ppu.Dispose();
+            apu.Dispose();
             running = false;
         }
         #endregion

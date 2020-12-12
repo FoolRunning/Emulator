@@ -1,4 +1,6 @@
-﻿namespace SystemBase.RAM
+﻿using System;
+
+namespace SystemBase.RAM
 {
     /// <summary>
     /// Random access memory (RAM) for a 16-bit bus
@@ -19,11 +21,14 @@
         }
         #endregion
 
-        public uint Size => (uint)bytes.Length;
-
         #region IBusComponent_16 implementation
         public void Dispose()
         {
+        }
+
+        public void Reset()
+        {
+            Array.Clear(bytes, 0, bytes.Length);
         }
 
         public void WriteDataFromBus(ushort address, byte data)

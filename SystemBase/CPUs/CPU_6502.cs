@@ -54,7 +54,7 @@ namespace SystemBase.CPUs
         #endregion
 
         #region Constructor
-        public CPU_6502(IClock clock, Bus_16 bus) : base(clock, "CPU_6502")
+        public CPU_6502(IClock clock, Bus_16 bus, long expectedTicksPerSecond) : base(clock, expectedTicksPerSecond, "CPU_6502")
         {
             this.bus = bus ?? throw new ArgumentNullException(nameof(bus));
 
@@ -87,22 +87,6 @@ namespace SystemBase.CPUs
         #endregion
         
         #region ICPU implementation
-        public void Reset()
-        {
-            //Console.WriteLine();
-            //Console.WriteLine("**************************************************************************");
-            //Console.WriteLine("Ticks per instruction: ");
-            //for (int i = 0; i < opCodes.Length; i++)
-            //{
-            //    currentInstruction = opCodes[i];
-            //    Console.WriteLine($"{i:X2}: {opCodes[i].RunOp().Count()}");
-            //}
-            //Console.WriteLine("**************************************************************************");
-            //Console.WriteLine();
-
-            resetRequested = true;
-        }
-
         /// <summary>
         /// Interrupt request
         /// </summary>
@@ -122,6 +106,22 @@ namespace SystemBase.CPUs
         #endregion
 
         #region IBusComponent_16 implementation
+        public void Reset()
+        {
+            //Console.WriteLine();
+            //Console.WriteLine("**************************************************************************");
+            //Console.WriteLine("Ticks per instruction: ");
+            //for (int i = 0; i < opCodes.Length; i++)
+            //{
+            //    currentInstruction = opCodes[i];
+            //    Console.WriteLine($"{i:X2}: {opCodes[i].RunOp().Count()}");
+            //}
+            //Console.WriteLine("**************************************************************************");
+            //Console.WriteLine();
+
+            resetRequested = true;
+        }
+
         public virtual void WriteDataFromBus(ushort address, byte data)
         {
             throw new NotImplementedException("CPU does not accept reads/writes from the bus");

@@ -16,7 +16,7 @@ namespace SystemBase
 
         IPixelDisplay MainDisplay { get; }
 
-        ISoundGenerator SoundGenerator { get; }
+        ISoundProvider SoundGenerator { get; }
 
         IEnumerable<IDisplay> OtherDisplayableComponents { get; }
 

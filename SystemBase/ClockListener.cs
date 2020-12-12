@@ -15,9 +15,10 @@ namespace SystemBase
         #endregion
 
         #region Constructor
-        protected ClockListener(IClock clock, string listenerDescription)
+        protected ClockListener(IClock clock, long expectedTicksPerSecond, string listenerDescription)
         {
             this.clock = clock;
+            ExpectedTicksPerSecond = expectedTicksPerSecond;
 
             run = true;
             tickThread = new Thread(TickLoop);
@@ -57,6 +58,8 @@ namespace SystemBase
         
         #region ITickProvider implementation
         public long TotalTickCount => Interlocked.Read(ref totalTicks);
+
+        public long ExpectedTicksPerSecond { get; }
         #endregion
 
         protected abstract void HandleSingleTick();

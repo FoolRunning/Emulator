@@ -1,4 +1,5 @@
-﻿using SystemBase.Bus;
+﻿using System;
+using SystemBase.Bus;
 
 namespace SystemBase.RAM
 {
@@ -21,11 +22,14 @@ namespace SystemBase.RAM
         }
         #endregion
 
-        public uint Size => (uint)bytes.Length;
-
         #region IBusComponent_32 implementation
         public void Dispose()
         {
+        }
+        
+        public void Reset()
+        {
+            Array.Clear(bytes, 0, bytes.Length);
         }
 
         public void WriteDataFromBus(uint address, byte data)

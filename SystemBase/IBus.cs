@@ -5,5 +5,7 @@ namespace SystemBase
     public interface IBus
     {
         IEnumerable<IBusComponent> AllComponents { get; }
+
+        void Reset();
     }
 }

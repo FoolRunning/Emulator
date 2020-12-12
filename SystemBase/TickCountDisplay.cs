@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Drawing;
+using System.Text;
 using System.Threading;
 
 namespace SystemBase
@@ -7,35 +8,43 @@ namespace SystemBase
     public sealed class TickCountDisplay : ITextDisplay
     {
         #region Member variables
-        private readonly ITickProvider tickProvider;
-        private readonly long expectedTicksPerSecond;
-        private long prevTickCount;
-        private long ticksInOneSecond;
+        private readonly ITickProvider[] tickProviders;
+        private readonly string[] titles;
+        private readonly long[] prevTickCount;
+        private readonly long[] ticksInOneSecond;
         #endregion
 
         #region Constructor
-        public TickCountDisplay(string title, ITickProvider tickProvider, SystemClock clock, long expectedTicksPerSecond)
+        public TickCountDisplay(SystemClock clock, string[] titles, ITickProvider[] tickProviders)
         {
-            this.tickProvider = tickProvider ?? throw new ArgumentNullException(nameof(tickProvider));
-            this.expectedTicksPerSecond = expectedTicksPerSecond;
-            Title = title;
+            this.tickProviders = tickProviders ?? throw new ArgumentNullException(nameof(tickProviders));
+            this.titles = titles;
+
+            prevTickCount = new long[tickProviders.Length];
+            ticksInOneSecond = new long[tickProviders.Length];
+
             clock.OneSecondTick += Clock_OneSecondTick;
         }
         #endregion
 
         #region ITextDisplay implementation
         public event Action FrameFinished;
+
+        public string Title => "Clock Frequency";
         
-        public string Title { get; }
-        
-        public Size Size => new Size(100, 25);
+        public Size Size => new Size(150, 12 * tickProviders.Length);
 
         public string Text
         {
             get
             {
-                long tios = Interlocked.Read(ref ticksInOneSecond);
-                return $"{tios:###,###,###} ({tios * 100.0 / expectedTicksPerSecond:###.00}%)";
+                StringBuilder bldr = new StringBuilder();
+                for (int i = 0; i < tickProviders.Length; i++)
+                {
+                    long tios = Interlocked.Read(ref ticksInOneSecond[i]);
+                    bldr.AppendLine($"{titles[i]}: {tios:###,###,###} ({tios * 100.0 / tickProviders[i].ExpectedTicksPerSecond:###.00}%)");
+                }
+                return bldr.ToString();
             }
         }
 
@@ -45,9 +54,12 @@ namespace SystemBase
         #region Event handlers
         private void Clock_OneSecondTick()
         {
-            long newTickCount = tickProvider.TotalTickCount;
-            Interlocked.Exchange(ref ticksInOneSecond, newTickCount - prevTickCount);
-            prevTickCount = newTickCount;
+            for (int i = 0; i < tickProviders.Length; i++)
+            {
+                long newTickCount = tickProviders[i].TotalTickCount;
+                Interlocked.Exchange(ref ticksInOneSecond[i], newTickCount - prevTickCount[i]);
+                prevTickCount[i] = newTickCount;
+            }
             FrameFinished?.Invoke();
         }
         #endregion
@@ -56,5 +68,7 @@ namespace SystemBase
     public interface ITickProvider
     {
         long TotalTickCount { get; }
+
+        long ExpectedTicksPerSecond { get; }
     }
 }

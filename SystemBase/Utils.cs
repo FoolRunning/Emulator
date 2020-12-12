@@ -53,5 +53,16 @@ namespace SystemBase
             // Reverse the top and bottom nibble then swap them.
             return (byte)((reverseBitLookup[b & 0x0F] << 4) | reverseBitLookup[b >> 4]);
         }
+
+        /// <summary>
+        /// 
+        /// </summary>
+        /// <remarks>Taken from https://youtu.be/72dI7dB3ZvQ?t=2961 </remarks>
+        public static float FastSine(float v)
+        {
+            float j = v * 0.15915f;
+            j -= (int)j;
+            return 20.785f * j * (j - 0.5f) * (j - 1.0f);
+        }
     }
 }

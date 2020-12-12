@@ -17,7 +17,7 @@ namespace System_NES
         #endregion
 
         #region Constructor
-        public CPU_2A03(IClock clock, Bus_16 bus) : base(clock, bus)
+        public CPU_2A03(IClock clock, Bus_16 bus) : base(clock, bus, 1789773)
         {
             this.bus = bus;
         }

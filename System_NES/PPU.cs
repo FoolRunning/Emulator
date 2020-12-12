@@ -120,7 +120,7 @@ namespace System_NES
         #endregion
         
         #region Constructor
-        public PPU(IClock clock, ICPU cpu) : base(clock, "PPU")
+        public PPU(IClock clock, ICPU cpu) : base(clock, 5369318, "PPU")
         {
             this.cpu = cpu;
 
@@ -173,6 +173,28 @@ namespace System_NES
         #endregion
 
         #region IBusComponent_16 implementation
+        public void Reset()
+        {
+            Array.Clear(nameTable[0], 0, nameTable[0].Length);
+            Array.Clear(nameTable[1], 0, nameTable[1].Length);
+            Array.Clear(patternTable, 0, patternTable.Length);
+            Array.Clear(mainOAM, 0, mainOAM.Length);
+            Array.Clear(secondaryOAM, 0, secondaryOAM.Length);
+            
+            registerControl = 0x00;
+            registerMask = 0x00;
+            lock (registerStatusSyncLock)
+                registerStatus = 0x00;
+
+            oamAddress = 0x00;
+            byteLatch = false;
+            dataBuffer = 0x00;
+            
+            fineX = 0;
+            registerT.Reg = 0;
+            registerV.Reg = 0;
+        }
+
         public void WriteDataFromBus(ushort address, byte data)
         {
             switch (address)
@@ -304,9 +326,9 @@ namespace System_NES
 #endif
         }
 
-        private IEnumerable<ClockTick> RenderFrame(bool oddFrame)
+        private IEnumerable<ClockTick> RenderFrame(bool isOddFrame)
         {
-            if (!oddFrame)
+            if (!isOddFrame)
                 yield return new ClockTick(); // even frames have an extra tick
 
             // Scanlines 0 to 239 do the drawing of the visible portion of the screen

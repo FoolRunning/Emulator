@@ -16,7 +16,7 @@ namespace SystemBase
 
         private volatile bool run;
         private double ticksForNextClock;
-        private long prevTicksOneSecond;
+        private long ticksForNextOneSecond;
         private long totalTicks;
         #endregion
 
@@ -25,6 +25,7 @@ namespace SystemBase
         {
             timer = new Stopwatch();
 
+            ExpectedTicksPerSecond = frequency;
             ticksPerClock = Stopwatch.Frequency / (double)frequency;
             ticksPerOneSecond = Stopwatch.Frequency;
 
@@ -51,6 +52,8 @@ namespace SystemBase
 
         #region ITickProvider implementation
         public long TotalTickCount => Interlocked.Read(ref totalTicks);
+
+        public long ExpectedTicksPerSecond { get; }
         #endregion
 
         #region Public methods
@@ -69,22 +72,22 @@ namespace SystemBase
             timer.Start();
 
             ticksForNextClock = timer.ElapsedTicks + ticksPerClock;
-            prevTicksOneSecond = timer.ElapsedTicks + ticksPerOneSecond;
+            ticksForNextOneSecond = timer.ElapsedTicks + ticksPerOneSecond;
 
             while (run)
             {
                 long currentTicks = timer.ElapsedTicks;
-                if (currentTicks >= prevTicksOneSecond)
-                {
-                    prevTicksOneSecond += ticksPerOneSecond;
-                    OneSecondTick?.Invoke();
-                }
+                if (currentTicks < ticksForNextClock) 
+                    continue;
 
-                if (currentTicks >= ticksForNextClock)
+                Interlocked.Increment(ref totalTicks);
+                ticksForNextClock += ticksPerClock;
+                ClockTick.Invoke();
+
+                if (currentTicks >= ticksForNextOneSecond)
                 {
-                    Interlocked.Increment(ref totalTicks);
-                    ticksForNextClock += ticksPerClock;
-                    ClockTick.Invoke();
+                    ticksForNextOneSecond += ticksPerOneSecond;
+                    OneSecondTick?.Invoke();
                 }
             }
 
