@@ -35,11 +35,19 @@
             this.loadSystemToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.nintendoEntertainmentSystemNESToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.exitToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.viewToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.smoothOutputToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.outputScalerToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.nearestToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.cRTToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.hqx2xToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.exactScalingToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.systemToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.loadProgramToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.startEmulationToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.stopEmulationToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.debugToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.fullscreenToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.tableLayoutPanel1.SuspendLayout();
             this.menuStrip1.SuspendLayout();
             this.SuspendLayout();
@@ -65,6 +73,7 @@
             this.displayOutput.Anchor = ((System.Windows.Forms.AnchorStyles)((((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Bottom) 
             | System.Windows.Forms.AnchorStyles.Left) 
             | System.Windows.Forms.AnchorStyles.Right)));
+            this.displayOutput.ExactScaling = false;
             this.displayOutput.Location = new System.Drawing.Point(3, 27);
             this.displayOutput.Name = "displayOutput";
             this.displayOutput.ShowFPS = true;
@@ -77,6 +86,7 @@
             // 
             this.menuStrip1.Items.AddRange(new System.Windows.Forms.ToolStripItem[] {
             this.fileToolStripMenuItem,
+            this.viewToolStripMenuItem,
             this.systemToolStripMenuItem,
             this.debugToolStripMenuItem});
             this.menuStrip1.Location = new System.Drawing.Point(0, 0);
@@ -116,6 +126,62 @@
             this.exitToolStripMenuItem.Text = "Exit";
             this.exitToolStripMenuItem.Click += new System.EventHandler(this.exitToolStripMenuItem_Click);
             // 
+            // viewToolStripMenuItem
+            // 
+            this.viewToolStripMenuItem.DropDownItems.AddRange(new System.Windows.Forms.ToolStripItem[] {
+            this.fullscreenToolStripMenuItem,
+            this.smoothOutputToolStripMenuItem,
+            this.outputScalerToolStripMenuItem,
+            this.exactScalingToolStripMenuItem});
+            this.viewToolStripMenuItem.Name = "viewToolStripMenuItem";
+            this.viewToolStripMenuItem.Size = new System.Drawing.Size(44, 20);
+            this.viewToolStripMenuItem.Text = "View";
+            // 
+            // smoothOutputToolStripMenuItem
+            // 
+            this.smoothOutputToolStripMenuItem.Name = "smoothOutputToolStripMenuItem";
+            this.smoothOutputToolStripMenuItem.Size = new System.Drawing.Size(180, 22);
+            this.smoothOutputToolStripMenuItem.Text = "Smooth Output";
+            this.smoothOutputToolStripMenuItem.Click += new System.EventHandler(this.smoothOutputToolStripMenuItem_Click);
+            // 
+            // outputScalerToolStripMenuItem
+            // 
+            this.outputScalerToolStripMenuItem.DropDownItems.AddRange(new System.Windows.Forms.ToolStripItem[] {
+            this.nearestToolStripMenuItem,
+            this.cRTToolStripMenuItem,
+            this.hqx2xToolStripMenuItem});
+            this.outputScalerToolStripMenuItem.Name = "outputScalerToolStripMenuItem";
+            this.outputScalerToolStripMenuItem.Size = new System.Drawing.Size(180, 22);
+            this.outputScalerToolStripMenuItem.Text = "Output Scaler";
+            // 
+            // nearestToolStripMenuItem
+            // 
+            this.nearestToolStripMenuItem.Name = "nearestToolStripMenuItem";
+            this.nearestToolStripMenuItem.Size = new System.Drawing.Size(114, 22);
+            this.nearestToolStripMenuItem.Text = "Nearest";
+            this.nearestToolStripMenuItem.Click += new System.EventHandler(this.nearestToolStripMenuItem_Click);
+            // 
+            // cRTToolStripMenuItem
+            // 
+            this.cRTToolStripMenuItem.Name = "cRTToolStripMenuItem";
+            this.cRTToolStripMenuItem.Size = new System.Drawing.Size(114, 22);
+            this.cRTToolStripMenuItem.Text = "CRT";
+            this.cRTToolStripMenuItem.Click += new System.EventHandler(this.cRTToolStripMenuItem_Click);
+            // 
+            // hqx2xToolStripMenuItem
+            // 
+            this.hqx2xToolStripMenuItem.Name = "hqx2xToolStripMenuItem";
+            this.hqx2xToolStripMenuItem.Size = new System.Drawing.Size(114, 22);
+            this.hqx2xToolStripMenuItem.Text = "Hqx 2x";
+            this.hqx2xToolStripMenuItem.Click += new System.EventHandler(this.hqx2xToolStripMenuItem_Click);
+            // 
+            // exactScalingToolStripMenuItem
+            // 
+            this.exactScalingToolStripMenuItem.Name = "exactScalingToolStripMenuItem";
+            this.exactScalingToolStripMenuItem.Size = new System.Drawing.Size(180, 22);
+            this.exactScalingToolStripMenuItem.Text = "Exact Scaling";
+            this.exactScalingToolStripMenuItem.Click += new System.EventHandler(this.exactScalingToolStripMenuItem_Click);
+            // 
             // systemToolStripMenuItem
             // 
             this.systemToolStripMenuItem.DropDownItems.AddRange(new System.Windows.Forms.ToolStripItem[] {
@@ -153,6 +219,13 @@
             this.debugToolStripMenuItem.Size = new System.Drawing.Size(54, 20);
             this.debugToolStripMenuItem.Text = "Debug";
             // 
+            // fullscreenToolStripMenuItem
+            // 
+            this.fullscreenToolStripMenuItem.Name = "fullscreenToolStripMenuItem";
+            this.fullscreenToolStripMenuItem.Size = new System.Drawing.Size(180, 22);
+            this.fullscreenToolStripMenuItem.Text = "Fullscreen";
+            this.fullscreenToolStripMenuItem.Click += new System.EventHandler(this.fullscreenToolStripMenuItem_Click);
+            // 
             // Main
             // 
             this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 13F);
@@ -186,6 +259,14 @@
         private System.Windows.Forms.ToolStripMenuItem loadSystemToolStripMenuItem;
         private System.Windows.Forms.ToolStripMenuItem nintendoEntertainmentSystemNESToolStripMenuItem;
         private System.Windows.Forms.ToolStripMenuItem loadProgramToolStripMenuItem;
+        private System.Windows.Forms.ToolStripMenuItem viewToolStripMenuItem;
+        private System.Windows.Forms.ToolStripMenuItem smoothOutputToolStripMenuItem;
+        private System.Windows.Forms.ToolStripMenuItem outputScalerToolStripMenuItem;
+        private System.Windows.Forms.ToolStripMenuItem nearestToolStripMenuItem;
+        private System.Windows.Forms.ToolStripMenuItem cRTToolStripMenuItem;
+        private System.Windows.Forms.ToolStripMenuItem hqx2xToolStripMenuItem;
+        private System.Windows.Forms.ToolStripMenuItem exactScalingToolStripMenuItem;
+        private System.Windows.Forms.ToolStripMenuItem fullscreenToolStripMenuItem;
     }
 }
 

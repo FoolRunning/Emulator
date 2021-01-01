@@ -1,11 +1,11 @@
-﻿using System.Collections.Generic;
-
-namespace SystemBase
+﻿namespace SystemBase
 {
     public interface IBus
     {
-        IEnumerable<IBusComponent> AllComponents { get; }
-
         void Reset();
+
+        void IRQ<T>() where T : IInterruptRequestHandler;
+
+        void NMI<T>() where T : IInterruptRequestHandler;
     }
 }

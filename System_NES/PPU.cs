@@ -64,8 +64,17 @@ namespace System_NES
 
         public event Action FrameFinished;
 
+        private static readonly byte[] finalPxDataLookup = new byte[512];
+        private static RgbColor[] pallete = 
+        {
+            new RgbColor(84 ,84 , 84),new RgbColor(0  ,30 ,116),new RgbColor(8  ,16 ,144),new RgbColor(48 ,0  ,136),new RgbColor(68 ,0  ,100),new RgbColor(92 ,0  , 48),new RgbColor(84 ,4  ,  0),new RgbColor(60 ,24 ,  0),new RgbColor(32 ,42 ,  0),new RgbColor(8  ,58 ,  0),new RgbColor(0  ,64 ,  0),new RgbColor(0  ,60 ,  0),new RgbColor(0  ,50 , 60),new RgbColor(0  , 0 ,  0),new RgbColor(0  , 0 ,  0),new RgbColor(0  , 0 ,  0),
+            new RgbColor(152,150,152),new RgbColor(8  ,76 ,196),new RgbColor(48 ,50 ,236),new RgbColor(92 ,30 ,228),new RgbColor(136,20 ,176),new RgbColor(160,20 ,100),new RgbColor(152,34 , 32),new RgbColor(120,60 ,  0),new RgbColor(84 ,90 ,  0),new RgbColor(40 ,114,  0),new RgbColor(8  ,124,  0),new RgbColor(0  ,118, 40),new RgbColor(0  ,102,120),new RgbColor(0  , 0 ,  0),new RgbColor(0  , 0 ,  0),new RgbColor(0  , 0 ,  0),
+            new RgbColor(236,238,236),new RgbColor(76 ,154,236),new RgbColor(120,124,236),new RgbColor(176,98 ,236),new RgbColor(228,84 ,236),new RgbColor(236,88 ,180),new RgbColor(236,106,100),new RgbColor(212,136, 32),new RgbColor(160,170,  0),new RgbColor(116,196,  0),new RgbColor(76 ,208, 32),new RgbColor(56 ,204,108),new RgbColor(56 ,180,204),new RgbColor(60 ,60 , 60),new RgbColor(0  , 0 ,  0),new RgbColor(0  , 0 ,  0),
+            new RgbColor(236,238,236),new RgbColor(168,204,236),new RgbColor(188,188,236),new RgbColor(212,178,236),new RgbColor(236,174,236),new RgbColor(236,174,212),new RgbColor(236,180,176),new RgbColor(228,196,144),new RgbColor(204,210,120),new RgbColor(180,222,120),new RgbColor(168,226,144),new RgbColor(152,226,180),new RgbColor(160,214,228),new RgbColor(160,162,160),new RgbColor(0  , 0 ,  0),new RgbColor(0  , 0 ,  0),
+        };
+
         private readonly PatternTableDisp[] patternTableDisplay = new PatternTableDisp[2];
-        private readonly ICPU cpu;
+        private readonly IBus bus;
         private IEnumerator<ClockTick> renderFrame;
 #if DEBUG
         private int debugCycle = -2; // A couple ticks to get going
@@ -73,14 +82,14 @@ namespace System_NES
 #endif
 
         private ushort pixelByteOffset;
-        private byte[] displayedBuffer;
-        private byte[] notDisplayedBuffer;
+        private RgbColor[] displayedBuffer;
+        private RgbColor[] notDisplayedBuffer;
         private bool oddFrame;
         private Cartridge cartridge;
 
         private readonly byte[] palleteTable = new byte[32];
         private readonly byte[][] nameTable = new byte[2][];
-        private readonly byte[] patternTable = new byte[Utils.eightKilobytes];
+        private readonly byte[] patternTable = new byte[Utils.Kilo8];
         private readonly byte[] mainOAM = new byte[64 * 4]; // 64 sprites = 256 bytes
         private readonly byte[] secondaryOAM = new byte[8 * 4]; // 8 sprites = 32 bytes
         private byte registerStatus;
@@ -90,7 +99,7 @@ namespace System_NES
         private bool byteLatch;
         private byte dataBuffer;
 
-        private byte fineX;
+        private volatile byte fineX;
         private LoopyRegister registerT;
         private LoopyRegister registerV;
 
@@ -119,37 +128,61 @@ namespace System_NES
         private readonly object registerStatusSyncLock = new object();
         #endregion
         
-        #region Constructor
-        public PPU(IClock clock, ICPU cpu) : base(clock, 5369318, "PPU")
+        #region Constructors
+        static PPU()
         {
-            this.cpu = cpu;
+            for (int bgPx = 0; bgPx < 4; bgPx++)
+            {
+                for (int bgPal = 0; bgPal < 4; bgPal++)
+                {
+                    for (int fgPx = 0; fgPx < 4; fgPx++)
+                    {
+                        for (int fgPal = 0; fgPal < 4; fgPal++)
+                        {
+                            for (int pri = 0; pri < 2; pri++)
+                            {
+                                int finalPixel = bgPx | fgPx;
+                                int finalPallete = 0x00;
+                                int allowSprZ = 0;
+                                if (bgPx == 0 && fgPx != 0)
+                                    finalPallete = fgPal + 0x04;
+                                else if (bgPx != 0 && fgPx == 0)
+                                    finalPallete = bgPal;
+                                else if (bgPx != 0 && fgPx != 0)
+                                {
+                                    if (pri == 0)
+                                    {
+                                        finalPixel = fgPx;
+                                        finalPallete = fgPal + 0x04;
+                                    }
+                                    else
+                                    {
+                                        finalPixel = bgPx;
+                                        finalPallete = bgPal;
+                                    }
+                                    allowSprZ = 1;
+                                }
+
+                                int index = (pri << 8) | (fgPal << 6) | (fgPx << 4) | (bgPal << 2) | bgPx;
+                                finalPxDataLookup[index] = (byte)((allowSprZ << 6) | (finalPallete << 3) | finalPixel);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        public PPU(IClock clock, IBus bus) : base(clock, 5369318, "PPU")
+        {
+            this.bus = bus;
 
             nameTable[0] = new byte[1024];
             nameTable[1] = new byte[1024];
 
             Size = new Size(256, 240);
-            Pallete = new[] // Pallete for NES is only 64 colors, but .Net needs 255 colors
-            {
-                Color.FromArgb(84 ,84 , 84),Color.FromArgb(0  ,30 ,116),Color.FromArgb(8  ,16 ,144),Color.FromArgb(48 ,0  ,136),Color.FromArgb(68 ,0  ,100),Color.FromArgb(92 ,0  , 48),Color.FromArgb(84 ,4  ,  0),Color.FromArgb(60 ,24 ,  0),Color.FromArgb(32 ,42 ,  0),Color.FromArgb(8  ,58 ,  0),Color.FromArgb(0  ,64 ,  0),Color.FromArgb(0  ,60 ,  0),Color.FromArgb(0  ,50 , 60),Color.FromArgb(0  , 0 ,  0),Color.FromArgb(0  , 0 ,  0),Color.FromArgb(0  , 0 ,  0),
-                Color.FromArgb(152,150,152),Color.FromArgb(8  ,76 ,196),Color.FromArgb(48 ,50 ,236),Color.FromArgb(92 ,30 ,228),Color.FromArgb(136,20 ,176),Color.FromArgb(160,20 ,100),Color.FromArgb(152,34 , 32),Color.FromArgb(120,60 ,  0),Color.FromArgb(84 ,90 ,  0),Color.FromArgb(40 ,114,  0),Color.FromArgb(8  ,124,  0),Color.FromArgb(0  ,118, 40),Color.FromArgb(0  ,102,120),Color.FromArgb(0  , 0 ,  0),Color.FromArgb(0  , 0 ,  0),Color.FromArgb(0  , 0 ,  0),
-                Color.FromArgb(236,238,236),Color.FromArgb(76 ,154,236),Color.FromArgb(120,124,236),Color.FromArgb(176,98 ,236),Color.FromArgb(228,84 ,236),Color.FromArgb(236,88 ,180),Color.FromArgb(236,106,100),Color.FromArgb(212,136, 32),Color.FromArgb(160,170,  0),Color.FromArgb(116,196,  0),Color.FromArgb(76 ,208, 32),Color.FromArgb(56 ,204,108),Color.FromArgb(56 ,180,204),Color.FromArgb(60 ,60 , 60),Color.FromArgb(0  , 0 ,  0),Color.FromArgb(0  , 0 ,  0),
-                Color.FromArgb(236,238,236),Color.FromArgb(168,204,236),Color.FromArgb(188,188,236),Color.FromArgb(212,178,236),Color.FromArgb(236,174,236),Color.FromArgb(236,174,212),Color.FromArgb(236,180,176),Color.FromArgb(228,196,144),Color.FromArgb(204,210,120),Color.FromArgb(180,222,120),Color.FromArgb(168,226,144),Color.FromArgb(152,226,180),Color.FromArgb(160,214,228),Color.FromArgb(160,162,160),Color.FromArgb(0  , 0 ,  0),Color.FromArgb(0  , 0 ,  0),
-                Color.Black,Color.Black,Color.Black,Color.Black,Color.Black,Color.Black,Color.Black,Color.Black,Color.Black,Color.Black,Color.Black,Color.Black,Color.Black,Color.Black,Color.Black,Color.Black,
-                Color.Black,Color.Black,Color.Black,Color.Black,Color.Black,Color.Black,Color.Black,Color.Black,Color.Black,Color.Black,Color.Black,Color.Black,Color.Black,Color.Black,Color.Black,Color.Black,
-                Color.Black,Color.Black,Color.Black,Color.Black,Color.Black,Color.Black,Color.Black,Color.Black,Color.Black,Color.Black,Color.Black,Color.Black,Color.Black,Color.Black,Color.Black,Color.Black,
-                Color.Black,Color.Black,Color.Black,Color.Black,Color.Black,Color.Black,Color.Black,Color.Black,Color.Black,Color.Black,Color.Black,Color.Black,Color.Black,Color.Black,Color.Black,Color.Black,
-                Color.Black,Color.Black,Color.Black,Color.Black,Color.Black,Color.Black,Color.Black,Color.Black,Color.Black,Color.Black,Color.Black,Color.Black,Color.Black,Color.Black,Color.Black,Color.Black,
-                Color.Black,Color.Black,Color.Black,Color.Black,Color.Black,Color.Black,Color.Black,Color.Black,Color.Black,Color.Black,Color.Black,Color.Black,Color.Black,Color.Black,Color.Black,Color.Black,
-                Color.Black,Color.Black,Color.Black,Color.Black,Color.Black,Color.Black,Color.Black,Color.Black,Color.Black,Color.Black,Color.Black,Color.Black,Color.Black,Color.Black,Color.Black,Color.Black,
-                Color.Black,Color.Black,Color.Black,Color.Black,Color.Black,Color.Black,Color.Black,Color.Black,Color.Black,Color.Black,Color.Black,Color.Black,Color.Black,Color.Black,Color.Black,Color.Black,
-                Color.Black,Color.Black,Color.Black,Color.Black,Color.Black,Color.Black,Color.Black,Color.Black,Color.Black,Color.Black,Color.Black,Color.Black,Color.Black,Color.Black,Color.Black,Color.Black,
-                Color.Black,Color.Black,Color.Black,Color.Black,Color.Black,Color.Black,Color.Black,Color.Black,Color.Black,Color.Black,Color.Black,Color.Black,Color.Black,Color.Black,Color.Black,Color.Black,
-                Color.Black,Color.Black,Color.Black,Color.Black,Color.Black,Color.Black,Color.Black,Color.Black,Color.Black,Color.Black,Color.Black,Color.Black,Color.Black,Color.Black,Color.Black,Color.Black,
-                Color.Black,Color.Black,Color.Black,Color.Black,Color.Black,Color.Black,Color.Black,Color.Black,Color.Black,Color.Black,Color.Black,Color.Black,Color.Black,Color.Black,Color.Black,Color.Black
-            };
             
-            displayedBuffer = new byte[Size.Width * Size.Height];
-            notDisplayedBuffer = new byte[Size.Width * Size.Height];
+            displayedBuffer = new RgbColor[Size.Width * Size.Height];
+            notDisplayedBuffer = new RgbColor[Size.Width * Size.Height];
             patternTableDisplay[0] = new PatternTableDisp(this, 0);
             patternTableDisplay[1] = new PatternTableDisp(this, 1);
             
@@ -160,13 +193,9 @@ namespace System_NES
         #region IPixelDisplay implementation
         public string Title => "Main display";
 
-        public PFormat PixelFormat => PFormat.Format8bppIndexed;
-        
         public Size Size { get; }
 
-        public Color[] Pallete { get; }
-
-        public void GetPixels(byte[] pixelsReturn)
+        public void GetPixels(RgbColor[] pixelsReturn)
         {
             Array.Copy(displayedBuffer, 0, pixelsReturn, 0, displayedBuffer.Length);
         }
@@ -204,18 +233,18 @@ namespace System_NES
                     registerT.NameTableX = HasControlFlag(Control.NameTableX) ? (byte)1 : (byte)0;
                     registerT.NameTableY = HasControlFlag(Control.NameTableY) ? (byte)1 : (byte)0;
                     spriteSize = HasControlFlag(Control.SpriteSize) ? (byte)16 : (byte)8;
-                    break;
+                    return;
                 case 0x2001: // Mask
                     registerMask = data; 
-                    break;
+                    return;
                 case 0x2002: // Status (read-only)
-                    break;
+                    return;
                 case 0x2003: // OAM Address
                     oamAddress = data;
-                    break;
+                    return;
                 case 0x2004: // OAM Data
                     mainOAM[oamAddress++] = data;
-                    break;
+                    return;
                 case 0x2005: // Scroll
                     if (!byteLatch)
                     {
@@ -228,7 +257,7 @@ namespace System_NES
                         registerT.CoarseY = (byte)(data >> 3);
                     }
                     byteLatch = !byteLatch;
-                    break;
+                    return;
                 case 0x2006: // PPU Address
                     if (!byteLatch)
                         registerT.Reg = (ushort)((registerT.Reg & 0x00FF) | (data << 8));
@@ -239,7 +268,7 @@ namespace System_NES
                     }
 
                     byteLatch = !byteLatch;
-                    break;
+                    return;
                 case 0x2007: // PPU Data
                     WritePPUData(registerV.Reg, data);
                     if (registerV.Reg >= 0x3F00 && registerV.Reg <= 0x3F03)
@@ -248,13 +277,13 @@ namespace System_NES
                         patternTableDisplay[1].DataChanged();
                     }
                     registerV.Reg += (ushort)(HasControlFlag(Control.IncrementMode) ? 32 : 1);
-                    break;
+                    return;
             }
         }
 
         public byte ReadDataForBus(ushort address)
         {
-            byte data = 0x00;
+            byte data;
             switch (address)
             {
                 case 0x2000: // Control
@@ -263,30 +292,30 @@ namespace System_NES
                     return registerMask;
                 case 0x2002: // Status
                     data = dataBuffer;
+                    byteLatch = false;
                     lock (registerStatusSyncLock)
                     {
                         data = (byte)((registerStatus & 0xE0) | (data & 0x1F));
                         registerStatus.ClearFlag(Status.VerticalBlank);
                     }
-                    byteLatch = false;
-                    break;
+                    return data;
                 case 0x2003: // OAM Address (write-only)
-                    break;
+                    return 0;
                 case 0x2004: // OAM Data
                     return mainOAM[oamAddress];
-                case 0x2005: // Scroll
+                case 0x2005: // Scroll (write-only)
                     return 0;
                 case 0x2006: // PPU Address (write-only)
-                    break;
+                    return 0;
                 case 0x2007: // PPU Data
                     data = dataBuffer;
                     dataBuffer = ReadPPUData(registerV.Reg);
                     if (registerV.Reg >= 0x3F00) // This range is instantaneous.
                         data = dataBuffer;
                     registerV.Reg += (ushort)(HasControlFlag(Control.IncrementMode) ? 32 : 1);
-                    break;
+                    return data;
             }
-            return data;
+            return 0;
         }
         #endregion
 
@@ -405,10 +434,8 @@ namespace System_NES
             {
                 lock (registerStatusSyncLock)
                     registerStatus.SetFlag(Status.SpriteOverFlow);
-            }
-
-            if (spriteCountNextScanLine > 8)
                 spriteCountNextScanLine = 8;
+            }
 
             Debug.Assert(spriteEvalIndex == 64);
             
@@ -473,7 +500,7 @@ namespace System_NES
                 registerStatus.SetFlag(Status.VerticalBlank);
 
             if (HasControlFlag(Control.EnableNMI))
-                cpu.NMI();
+                bus.NMI<ICPU>();
 
             // Rest of the cycles do nothing
             for (int c = 2; c <= 340; c++)
@@ -539,6 +566,15 @@ namespace System_NES
             if (address <= 0x3EFF)
             {
                 address &= 0x0FFF;
+                if (cartridge.Mirror == MirrorMode.OneScreenLo)
+                {
+                    return nameTable[0][address & 0x03FF];
+                }
+                if (cartridge.Mirror == MirrorMode.OneScreenHigh)
+                {
+                    return nameTable[1][address & 0x03FF];
+                }
+                
                 if (cartridge.Mirror == MirrorMode.Vertical)
                 {
                     if (address <= 0x03FF)
@@ -581,7 +617,15 @@ namespace System_NES
             else if (address <= 0x3EFF)
             {
                 address &= 0x0FFF;
-                if (cartridge.Mirror == MirrorMode.Vertical)
+                if (cartridge.Mirror == MirrorMode.OneScreenLo)
+                {
+                    nameTable[0][address & 0x03FF] = data;
+                }
+                else if (cartridge.Mirror == MirrorMode.OneScreenHigh)
+                {
+                    nameTable[1][address & 0x03FF] = data;
+                }
+                else if (cartridge.Mirror == MirrorMode.Vertical)
                 {
                     if (address <= 0x03FF)
                         nameTable[0][address & 0x03FF] = data;
@@ -614,66 +658,45 @@ namespace System_NES
         #region Private helper methods
         private void DrawPixel()
         {
-            byte bgPixel = 0x00;
-            byte bgPallete = 0x00;
-            if (HasMaskFlag(Mask.RenderBackground))
-            {
-                ushort bit = (ushort)(0x8000 >> fineX);
-                ushort shift = (byte)(15 - fineX);
-                bgPixel = (byte)(((bgShifterPatternHigh & bit) >> (shift - 1)) | ((bgShifterPatternLow & bit) >> shift));
-                bgPallete = (byte)(((bgShifterAttributeHigh & bit) >> (shift - 1)) | ((bgShifterAttributeLow & bit) >> shift));
-            }
+            byte xOffset = fineX; // for thread safety
+            ushort bit = (ushort)(0x8000 >> xOffset);
+            ushort shift = (byte)(15 - xOffset);
+            byte bgPixel = (byte)(((bgShifterPatternHigh & bit) >> (shift - 1)) | ((bgShifterPatternLow & bit) >> shift));
+            byte bgPallete = (byte)(((bgShifterAttributeHigh & bit) >> (shift - 1)) | ((bgShifterAttributeLow & bit) >> shift));
+            bgPixel = (byte)(bgPixel & MaskMask(Mask.RenderBackground));
 
             byte fgPixel = 0x00;
             byte fgPallete = 0x00;
-            bool fgPriority = false;
+            byte fgPriority = 0x00;
             bool spriteZeroBeingRendered = false;
-            if (HasMaskFlag(Mask.RenderSprites))
+            for (int i = 0; i < spriteCountThisScanLine; i++)
             {
-                for (int i = 0; i < spriteCountThisScanLine; i++)
-                {
-                    if (fgSpriteCounter[i] != 0) 
-                        continue;
+                if (fgSpriteCounter[i] != 0)
+                    continue;
 
-                    fgPixel = (byte)(((fgShifterSpriteHigh[i] & 0x80) >> 6) | ((fgShifterSpriteLow[i] & 0x80) >> 7));
-                    fgPallete = (byte)((fgSpriteAttribute[i] & 0x03) + 0x04);
-                    fgPriority = (fgSpriteAttribute[i] & 0x20) == 0;
-                    if (fgPixel != 0)
-                    {
-                        if (i == 0)
-                            spriteZeroBeingRendered = true;
-                        break;
-                    }
+                fgPixel = (byte)(((fgShifterSpriteHigh[i] & 0x80) >> 6) | ((fgShifterSpriteLow[i] & 0x80) >> 7));
+                fgPallete = (byte)(fgSpriteAttribute[i] & 0x03);
+                fgPriority = (byte)((fgSpriteAttribute[i] & 0x20) >> 5);
+                if (fgPixel != 0)
+                {
+                    spriteZeroBeingRendered = (i == 0);
+                    break;
                 }
             }
+            fgPixel = (byte)(fgPixel & MaskMask(Mask.RenderSprites));
 
-            byte finalPixel = (byte)(bgPixel | fgPixel);
-            byte finalPallete = 0x00;
-            if (bgPixel == 0 && fgPixel != 0)
-                finalPallete = fgPallete;
-            else if (bgPixel != 0 && fgPixel == 0)
-                finalPallete = bgPallete;
-            else if (bgPixel != 0 && fgPixel != 0)
+            ushort index = (ushort)((fgPriority << 8) | (fgPallete << 6) | (fgPixel << 4) | (bgPallete << 2) | bgPixel);
+            byte pxData = finalPxDataLookup[index];
+            byte palleteIndex = (byte)((pxData >> 3) & 0x07);
+            byte pixel = (byte)(pxData & 0x03);
+            notDisplayedBuffer[pixelByteOffset++] = GetColorFromPalleteRam(palleteIndex, pixel);
+
+            if ((pxData & 0b1000000) != 0 && spriteZeroBeingRendered && spriteZeroHitPossibleThisScanLine)
             {
-                if (fgPriority)
-                {
-                    finalPixel = fgPixel;
-                    finalPallete = fgPallete;
-                }
-                else
-                {
-                    finalPixel = bgPixel;
-                    finalPallete = bgPallete;
-                }
-
-                if (spriteZeroHitPossibleThisScanLine && spriteZeroBeingRendered)
-                {
-                    lock (registerStatusSyncLock)
-                        registerStatus.SetFlag(Status.SpriteZeroHit);
-                }
+                lock (registerStatusSyncLock)
+                    registerStatus.SetFlag(Status.SpriteZeroHit);
             }
 
-            notDisplayedBuffer[pixelByteOffset++] = GetColorFromPalleteRam(finalPallete, finalPixel);
             //notDisplayedBuffer[pixelByteOffset++] = GetColorFromPalleteRam(finalPallete, pixelByteOffset % 5 == 0 ? (byte)1 : (byte)0); // finalPixel);
         }
 
@@ -791,7 +814,8 @@ namespace System_NES
 
             return (ushort)(((tileId & 0x01) << 12) | (((tileId & 0xFE) + 1) << 4) | (yOffset & 0x07));
         }
-
+        
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void LoadBackgroundShifters()
         {
             bgShifterPatternLow = (ushort)((bgShifterPatternLow & 0xFF00) | bgNextTileLow);
@@ -800,6 +824,7 @@ namespace System_NES
             bgShifterAttributeHigh = (ushort)((bgShifterAttributeHigh & 0xFF00) | ((bgNextTileAttribute & 0b10) != 0 ? 0xFF : 0x00));
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void UpdateBackgroundShifters()
         {
             //if (!HasMaskFlag(Mask.RenderBackground)) 
@@ -901,16 +926,30 @@ namespace System_NES
 
         private void SwapBuffers()
         {
-            byte[] temp = displayedBuffer;
+            RgbColor[] temp = displayedBuffer;
             displayedBuffer = notDisplayedBuffer;
             notDisplayedBuffer = temp;
         }
 
-        private byte GetColorFromPalleteRam(byte palleteIndex, byte pixel)
+        private RgbColor GetColorFromPalleteRam(byte palleteIndex, byte pixel)
         {
-            return ReadPPUData((ushort)(0x3F00 + (palleteIndex << 2) + pixel));
+            return pallete[ReadPPUData((ushort)(0x3F00 + (palleteIndex << 2) + pixel)) & 0x3F];
         }
         
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private byte MaskMask(int mask)
+        {
+            byte val = (byte)(registerMask & mask);
+            val = (byte)(val | (val >> 1) | (val << 7));
+            val = (byte)(val | (val >> 1) | (val << 7));
+            val = (byte)(val | (val >> 1) | (val << 7));
+            val = (byte)(val | (val >> 1) | (val << 7));
+            val = (byte)(val | (val >> 1) | (val << 7));
+            val = (byte)(val | (val >> 1) | (val << 7));
+            val = (byte)(val | (val >> 1) | (val << 7));
+            return val;
+        }
+
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private bool HasMaskFlag(byte maskValue)
         {
@@ -971,31 +1010,27 @@ namespace System_NES
         private sealed class PatternTableDisp : IPixelDisplay
         {
             private readonly byte patternTableIndex;
-            private readonly Buffer2D patternTableDisplay;
+            private readonly Buffer2D patternTableBuffer;
             private readonly PPU ppu;
 
             public PatternTableDisp(PPU ppu, byte patternTableIndex)
             {
                 this.ppu = ppu;
                 this.patternTableIndex = patternTableIndex;
-                patternTableDisplay = new Buffer2D(128, 128);
+                patternTableBuffer = new Buffer2D(128, 128);
             }
 
             public event Action FrameFinished;
 
             public string Title => "Pattern Table " + patternTableIndex;
 
-            public PFormat PixelFormat => PFormat.Format8bppIndexed;
-            
             public Size Size => new Size(128, 128);
-            
-            public Color[] Pallete => ppu.Pallete;
 
-            public void GetPixels(byte[] pixelsReturn)
+            public void GetPixels(RgbColor[] pixelsReturn)
             {
                 if (ppu.cartridge != null)
                     UpdatePatternTable(patternTableIndex, 0);
-                Array.Copy(patternTableDisplay.InternalBuffer, 0, pixelsReturn, 0, patternTableDisplay.InternalBuffer.Length);
+                Array.Copy(patternTableBuffer.InternalBuffer, 0, pixelsReturn, 0, patternTableBuffer.InternalBuffer.Length);
             }
 
             public void DataChanged()
@@ -1006,7 +1041,7 @@ namespace System_NES
 
             private void UpdatePatternTable(byte tableIndex, byte palleteIndex)
             {
-                Buffer2D pt = patternTableDisplay;
+                Buffer2D pt = patternTableBuffer;
                 int memOffset = tableIndex * 0x1000;
                 for (int tileY = 0; tileY < 16; tileY++)
                 {

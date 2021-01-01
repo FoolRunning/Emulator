@@ -29,10 +29,6 @@ namespace SystemBase
 
     public interface IPixelDisplay : IDisplay
     {
-        PFormat PixelFormat { get; }
-        
-        Color[] Pallete { get; }
-        
-        void GetPixels(byte[] pixelsReturn);
+        void GetPixels(RgbColor[] pixelsReturn);
     }
 }

@@ -1,4 +1,6 @@
 ﻿using System;
+using System.Collections.Generic;
+using System.Threading;
 using SystemBase;
 
 namespace System_NES
@@ -16,38 +18,48 @@ namespace System_NES
         }
         #endregion
 
+        private static class EnvelopeFlag
+        {
+            public const byte ConstantVolume = (1 << 4);
+            public const byte Loop = (1 << 5);
+        }
+        
         private const int CPUClockRate = 1789773;
         private const int SampleRate = 44100;
         private const double TimePerSample = 1.0 / SampleRate;
         private const double TimePerClock = 1.0 / (CPUClockRate / 2.0);
 
-        private readonly byte[] pulseSequence = { 0b00000001, 0b00000011, 0b00001111, 0b11111100 };
-        private readonly float[] pulseDutyCycle = { 0.125f, 0.250f, 0.500f, 0.750f };
-
-        private readonly float[] buffer = new float[8192];
-        private double timeForNextSoundSample;
-        private double totalTime;
-        private ulong writeBufferOffset;
-        private ulong readBufferOffset;
-
-        private uint frameClockCounter;
-        private float pulse1Sample;
-
-        private readonly Sequencer pulse1Sequencer = new Sequencer();
-        private readonly Sequencer pulse2Sequencer = new Sequencer();
-        private readonly Sequencer triangleSequencer = new Sequencer();
-        private readonly SquareWaveGenerator pulse1Generator = new SquareWaveGenerator();
-        private readonly SquareWaveGenerator pulse2Generator = new SquareWaveGenerator();
-        private readonly TriangleWaveGenerator triangleGenerator = new TriangleWaveGenerator();
-
-        private volatile byte registerPulse1Duty;
-        private volatile byte registerPulse2Duty;
-        private volatile byte registerEnabled;
-        private volatile bool dmcInterrupt;
-
         private static readonly float[] pulseMixerLookup = new float[31];
         private static readonly float[] tndMixerLookup = new float[203];
+        private static readonly int[] lengthLookup = 
+        {
+            10, 254, 20,  2, 40,  4, 80,  6, 160,  8, 60, 10, 14, 12, 26, 14,
+            12,  16, 24, 18, 48, 20, 96, 22, 192, 24, 72, 26, 16, 28, 32, 30
+        };
 
+        private readonly byte[] pulseSequence = { 0b01000000, 0b01100000, 0b01111000, 0b10011111 };
+        //private readonly byte[] pulseSequence = { 0b10111111, 0b10011111, 0b10000111, 0b01100000 };
+        //private readonly float[] pulseDutyCycle = { 0.125f, 0.250f, 0.500f, 0.750f };
+
+        private readonly float[] buffer = new float[Utils.Kilo16];
+        private double timeForNextSoundSample;
+        private double totalTime;
+        private long writeBufferOffset;
+        private long readBufferOffset;
+
+        private bool fiveStepFrameCounter;
+        private IEnumerator<ClockTick> frameCounter;
+
+        private readonly PulseSequencer pulse1Sequencer = new PulseSequencer();
+        private readonly PulseSequencer pulse2Sequencer = new PulseSequencer();
+        private readonly PulseSequencer triangleSequencer = new PulseSequencer();
+        //private readonly SquareWaveGenerator pulse1Generator = new SquareWaveGenerator();
+        //private readonly SquareWaveGenerator pulse2Generator = new SquareWaveGenerator();
+        //private readonly TriangleWaveGenerator triangleGenerator = new TriangleWaveGenerator();
+
+        private volatile bool dmcInterrupt;
+
+        #region Constructors
         static APU()
         {
             for (int i = 1; i < pulseMixerLookup.Length; i++)
@@ -57,33 +69,31 @@ namespace System_NES
                 tndMixerLookup[i] = 163.67f / (24329.0f / i + 100.0f);
         }
 
-        public APU(IClock clock) : base(clock, 894886, "APU")
+        public APU(IClock clock) : base(clock, CPUClockRate, "APU")
         {
+            frameCounter = FrameCounter4StepMode().GetEnumerator();
         }
+        #endregion
         
         #region IBusComponent_16 implementation
         public void Reset()
         {
-            registerEnabled = 0x00;
-            registerPulse1Duty = 0x00;
-            registerPulse2Duty = 0x00;
-
             pulse1Sequencer.Enabled = false;
             pulse2Sequencer.Enabled = false;
             triangleSequencer.Enabled = false;
             
-            pulse1Generator.Enabled = false;
-            pulse1Generator.Frequency = 0;
-            pulse1Generator.DutyCycle = 0.5f;
+            //pulse1Generator.Enabled = false;
+            //pulse1Generator.Frequency = 0;
+            //pulse1Generator.DutyCycle = 0.5f;
             
-            pulse2Generator.Enabled = false;
-            pulse2Generator.Frequency = 0;
-            pulse2Generator.DutyCycle = 0.5f;
+            //pulse2Generator.Enabled = false;
+            //pulse2Generator.Frequency = 0;
+            //pulse2Generator.DutyCycle = 0.5f;
             
 
-            triangleGenerator.Enabled = false;
-            triangleGenerator.Frequency = 0;
-            triangleGenerator.DutyCycle = 0.5f;
+            //triangleGenerator.Enabled = false;
+            //triangleGenerator.Frequency = 0;
+            //triangleGenerator.DutyCycle = 0.5f;
         }
 
         public void WriteDataFromBus(ushort address, byte data)
@@ -91,35 +101,43 @@ namespace System_NES
             switch (address)
             {
                 case 0x4000:
-                    registerPulse1Duty = data;
                     pulse1Sequencer.Sequence = pulseSequence[(data & 0xC0) >> 6];
-                    pulse1Generator.DutyCycle = pulseDutyCycle[(data & 0xC0) >> 6];
+                    pulse1Sequencer.Volume = (byte)(data & 0xF);
+                    pulse1Sequencer.ConstantVolume = data.HasFlag(EnvelopeFlag.ConstantVolume);
+                    pulse1Sequencer.Loop = data.HasFlag(EnvelopeFlag.Loop);
+                    //pulse1Generator.DutyCycle = pulseDutyCycle[(data & 0xC0) >> 6];
                     break;
                 case 0x4001:
                     break;
                 case 0x4002:
-                    pulse1Sequencer.Reload = (ushort)((pulse1Sequencer.Reload & 0xFF00) | data);
+                    pulse1Sequencer.DutyCycle = (ushort)((pulse1Sequencer.DutyCycle & 0xFF00) | data);
                     break;
                 case 0x4003:
-                    pulse1Sequencer.Reload = (ushort)(((data & 0x07) << 8) | (pulse1Sequencer.Reload & 0x00FF));
-                    pulse1Sequencer.Timer = pulse1Sequencer.Reload;
-                    pulse1Generator.Frequency = CPUClockRate / (16.0f * pulse1Sequencer.Reload + 1);
+                    pulse1Sequencer.Length = (ushort)lengthLookup[(data & 0xF8) >> 3];
+                    pulse1Sequencer.DutyCycle = (ushort)(((data & 0x07) << 8) | (pulse1Sequencer.DutyCycle & 0x00FF));
+                    pulse1Sequencer.Timer = pulse1Sequencer.DutyCycle;
+                    pulse1Sequencer.Start = true;
+                    //pulse1Generator.Frequency = CPUClockRate / (16.0f * pulse1Sequencer.DutyCycle + 1);
                     break;
 
                 case 0x4004:
-                    registerPulse2Duty = data;
                     pulse2Sequencer.Sequence = pulseSequence[(data & 0xC0) >> 6];
-                    pulse2Generator.DutyCycle = pulseDutyCycle[(data & 0xC0) >> 6];
+                    pulse2Sequencer.Volume = (byte)(data & 0xF);
+                    pulse2Sequencer.ConstantVolume = data.HasFlag(EnvelopeFlag.ConstantVolume);
+                    pulse2Sequencer.Loop = data.HasFlag(EnvelopeFlag.Loop);
+                    //pulse2Generator.DutyCycle = pulseDutyCycle[(data & 0xC0) >> 6];
                     break;
                 case 0x4005:
                     break;
                 case 0x4006:
-                    pulse2Sequencer.Reload = (ushort)((pulse2Sequencer.Reload & 0xFF00) | data);
+                    pulse2Sequencer.DutyCycle = (ushort)((pulse2Sequencer.DutyCycle & 0xFF00) | data);
                     break;
                 case 0x4007:
-                    pulse2Sequencer.Reload = (ushort)(((data & 0x07) << 8) | (pulse2Sequencer.Reload & 0x00FF));
-                    pulse2Sequencer.Timer = pulse2Sequencer.Reload;
-                    pulse2Generator.Frequency = CPUClockRate / (16.0f * pulse2Sequencer.Reload + 1);
+                    pulse2Sequencer.Length = (ushort)lengthLookup[(data & 0xF8) >> 3];
+                    pulse2Sequencer.DutyCycle = (ushort)(((data & 0x07) << 8) | (pulse2Sequencer.DutyCycle & 0x00FF));
+                    pulse2Sequencer.Timer = pulse2Sequencer.DutyCycle;
+                    pulse2Sequencer.Start = true;
+                    //pulse2Generator.Frequency = CPUClockRate / (16.0f * pulse2Sequencer.DutyCycle + 1);
                     break;
 
                 case 0x4008:
@@ -127,12 +145,12 @@ namespace System_NES
                 case 0x4009:
                     break;
                 case 0x400A:
-                    triangleSequencer.Reload = (ushort)((triangleSequencer.Reload & 0xFF00) | data);
+                    triangleSequencer.DutyCycle = (ushort)((triangleSequencer.DutyCycle & 0xFF00) | data);
                     break;
                 case 0x400B:
-                    triangleSequencer.Reload = (ushort)(((data & 0x07) << 8) | (triangleSequencer.Reload & 0x00FF));
-                    triangleSequencer.Timer = triangleSequencer.Reload;
-                    triangleGenerator.Frequency = CPUClockRate / (32.0f * triangleSequencer.Reload + 1);
+                    triangleSequencer.DutyCycle = (ushort)(((data & 0x07) << 8) | (triangleSequencer.DutyCycle & 0x00FF));
+                    triangleSequencer.Timer = triangleSequencer.DutyCycle;
+                    //triangleGenerator.Frequency = CPUClockRate / (32.0f * triangleSequencer.DutyCycle + 1);
                     break;
 
                 case 0x400C:
@@ -154,17 +172,17 @@ namespace System_NES
                     break;
 
                 case 0x4015: 
-                    registerEnabled = data;
                     dmcInterrupt = false;
                     pulse1Sequencer.Enabled = data.HasFlag(EnabledFlag.Pulse1);
                     pulse2Sequencer.Enabled = data.HasFlag(EnabledFlag.Pulse2);
                     triangleSequencer.Enabled = data.HasFlag(EnabledFlag.Triangle);
 
-                    pulse1Generator.Enabled = data.HasFlag(EnabledFlag.Pulse1);
-                    pulse2Generator.Enabled = data.HasFlag(EnabledFlag.Pulse2);
-                    triangleGenerator.Enabled = data.HasFlag(EnabledFlag.Triangle);
+                    //pulse1Generator.Enabled = data.HasFlag(EnabledFlag.Pulse1);
+                    //pulse2Generator.Enabled = data.HasFlag(EnabledFlag.Pulse2);
+                    //triangleGenerator.Enabled = data.HasFlag(EnabledFlag.Triangle);
                     break;
                 case 0x4017: // Frame counter
+                    fiveStepFrameCounter = (data & 0b10000000) != 0;
                     break;
             }
         }
@@ -183,125 +201,241 @@ namespace System_NES
 
         public float GetSample(int channel, float globalTime, float timeStep)
         {
-            if (readBufferOffset >= writeBufferOffset)
-                readBufferOffset = writeBufferOffset - 100;
+            long writeOffset = Interlocked.Read(ref writeBufferOffset);
+            if (readBufferOffset >= writeOffset)
+                readBufferOffset = Math.Max(writeOffset - 100, 0);
 
-            float data = buffer[readBufferOffset % (ulong)buffer.Length];
+            float data = buffer[readBufferOffset % buffer.Length];
             readBufferOffset++;
             return data;
         }
-
-        //public IEnumerable<ISoundChannelGenerator> InputChannels
-        //{
-        //    get
-        //    {
-        //        yield return pulse1Generator;
-        //        yield return pulse2Generator;
-        //        yield return triangleGenerator;
-        //    }
-        //}
         #endregion
 
         #region ClockListener implementation
+        private float prevSampleValue;
+        private bool isEvenTick;
+
         protected override void HandleSingleTick()
         {
-            //bool quarterFrameClock = false;
-            //bool halfFrameClock = false;
+            isEvenTick = !isEvenTick;
+            if (!isEvenTick) // Most of the APU operates 1/2 the speed of the CPU
+                return;
 
-            //frameClockCounter++;
-
-            //if (frameClockCounter == 3729)
-            //    quarterFrameClock = true;
-            //else if (frameClockCounter == 7457)
-            //{
-            //    quarterFrameClock = true;
-            //    halfFrameClock = true;
-            //}
-            //else if (frameClockCounter == 11186)
-            //    quarterFrameClock = true;
-            //else if (frameClockCounter == 14915)
-            //{
-            //    quarterFrameClock = true;
-            //    halfFrameClock = true;
-            //    frameClockCounter = 0;
-            //}
-
-            //if (quarterFrameClock)
-            //{
-
-            //}
-
-            //if (halfFrameClock)
-            //{
-
-            //}
-
-            pulse1Sequencer.Clock((ref uint sequence) =>
+            if (!frameCounter.MoveNext())
             {
-                sequence = ((sequence & 0x0001) << 7) | ((sequence & 0x00FE) >> 1);
-            });
+                frameCounter = fiveStepFrameCounter
+                    ? FrameCounter5StepMode().GetEnumerator()
+                    : FrameCounter4StepMode().GetEnumerator();
+                frameCounter.MoveNext(); // Still want to consume a clock tick
+            }
+
+            pulse1Sequencer.MainTick();
+            pulse2Sequencer.MainTick();
 
             totalTime += TimePerClock;
             if (totalTime >= timeForNextSoundSample)
             {
                 float newSampleValue = GetMixedSoundSample((float)totalTime, (float)TimePerSample);
-                buffer[writeBufferOffset % (ulong)buffer.Length] = (newSampleValue + prevSampleValue) / 2.0f;
-                prevSampleValue = newSampleValue;
-                writeBufferOffset++;
+
+                //buffer[Interlocked.Read(ref writeBufferOffset) % buffer.Length] = (newSampleValue + prevSampleValue) / 2.0f;
+                //prevSampleValue = newSampleValue;
+                buffer[Interlocked.Read(ref writeBufferOffset) % buffer.Length] = newSampleValue;
+                Interlocked.Increment(ref writeBufferOffset);
                 timeForNextSoundSample += TimePerSample;
             }
         }
-        #endregion
 
-        private float prevSampleValue;
+        private IEnumerable<ClockTick> FrameCounter4StepMode()
+        {
+            for (int c = 1; c <= 3728; c++)
+                yield return new ClockTick();
+
+            // cycle 3728.5 (3729) fires quarter-frame tick
+            yield return new ClockTick();
+            HandleQuarterFrameTick();
+
+            for (int c = 3730; c <= 7456; c++)
+                yield return new ClockTick();
+
+            // cycle 7456.5 (7457) fires quarter-frame and half-frame ticks
+            yield return new ClockTick();
+            HandleQuarterFrameTick();
+            HandleHalfFrameTick();
+
+            for (int c = 7458; c <= 11185; c++)
+                yield return new ClockTick();
+
+            // cycle 11185.5 (11186) fires quarter-frame tick
+            yield return new ClockTick();
+            HandleQuarterFrameTick();
+
+            for (int c = 11187; c <= 14914; c++)
+                yield return new ClockTick();
+
+            // cycle 14914.5 (14915) fires quarter-frame and half-frame ticks
+            yield return new ClockTick();
+            HandleQuarterFrameTick();
+            HandleHalfFrameTick();
+        }
+
+        private IEnumerable<ClockTick> FrameCounter5StepMode()
+        {
+            for (int c = 1; c <= 3728; c++)
+                yield return new ClockTick();
+
+            // cycle 3728.5 (3729) fires quarter-frame tick
+            yield return new ClockTick();
+            HandleQuarterFrameTick();
+
+            for (int c = 3730; c <= 7456; c++)
+                yield return new ClockTick();
+
+            // cycle 7456.5 (7457) fires quarter-frame and half-frame ticks
+            yield return new ClockTick();
+            HandleQuarterFrameTick();
+            HandleHalfFrameTick();
+
+            for (int c = 7458; c <= 11185; c++)
+                yield return new ClockTick();
+
+            // cycle 11185.5 (11186) fires quarter-frame tick
+            yield return new ClockTick();
+            HandleQuarterFrameTick();
+
+            for (int c = 11187; c <= 18640; c++)
+                yield return new ClockTick();
+
+            // cycle 18640.5 (18641) fires quarter-frame and half-frame ticks
+            yield return new ClockTick();
+            HandleQuarterFrameTick();
+            HandleHalfFrameTick();
+        }
+
+        private void HandleQuarterFrameTick()
+        {
+            pulse1Sequencer.QuarterTick();
+            pulse2Sequencer.QuarterTick();
+            triangleSequencer.QuarterTick();
+        }
+
+        private void HandleHalfFrameTick()
+        {
+            pulse1Sequencer.HalfTick();
+            pulse2Sequencer.HalfTick();
+            triangleSequencer.HalfTick();
+        }
+        #endregion
 
         private float GetMixedSoundSample(float globalTime, float timeStep)
         {
-            int pulse1 = (int)((pulse1Generator.GetSample(0, globalTime, timeStep) + 1.0f) * 7.5f);
-            int pulse2 = (int)((pulse2Generator.GetSample(0, globalTime, timeStep) + 1.0f) * 7.5f);
-            int triangle = (int)((triangleGenerator.GetSample(0, globalTime, timeStep) + 1.0f) * 7.5f);
-            //int pulse1 = (pulse1Sequencer.Output & 0x01) * 15;
-            //int pulse2 = 0; //(int)((pulse2Generator.GetSample(0, globalTime, timeStep) + 1.0f) * 7.5f);
-            //int triangle = 0; //(int)((triangleGenerator.GetSample(0, globalTime, timeStep) + 1.0f) * 7.5f);
+            //int pulse1 = (int)((pulse1Generator.GetSample(0, globalTime, timeStep) + 1.0f) * 7.5f);
+            //int pulse2 = (int)((pulse2Generator.GetSample(0, globalTime, timeStep) + 1.0f) * 7.5f);
+            //int triangle = (int)((triangleGenerator.GetSample(0, globalTime, timeStep) + 1.0f) * 7.5f);
+            int pulse1 = pulse1Sequencer.FinalOutput();
+            int pulse2 = pulse2Sequencer.FinalOutput();
+            int triangle = 0; //(int)((triangleGenerator.GetSample(0, globalTime, timeStep) + 1.0f) * 7.5f);
             const int noise = 0; // TODO
             const int dmc = 0; // TODO
 
-            float pulseOut = pulse1 == 0 && pulse2 == 0 ? 0.0f :
-                95.88f / (8128.0f / (pulse1 + pulse2) + 100.0f);
-            float tndOut = triangle == 0 && noise == 0 && dmc == 0 ? 0.0f :
-                159.79f / (1.0f / (triangle / 8227.0f + noise / 12241.0f + dmc / 22638.0f));
-            return pulseOut + tndOut;
-            //return pulseMixerLookup[pulse1 + pulse2] + tndMixerLookup[3 * triangle + 2 * noise + dmc];
+            //float pulseOut = pulse1 == 0 && pulse2 == 0 ? 0.0f :
+            //    95.88f / (8128.0f / (pulse1 + pulse2) + 100.0f);
+            //float tndOut = triangle == 0 && noise == 0 && dmc == 0 ? 0.0f :
+            //    159.79f / (1.0f / (triangle / 8227.0f + noise / 12241.0f + dmc / 22638.0f));
+            //return pulseOut + tndOut;
+            return pulseMixerLookup[pulse1 + pulse2] + tndMixerLookup[3 * triangle + 2 * noise + dmc];
         }
 
-        private delegate void SequencerAction(ref uint sequence);
-
-        private sealed class Sequencer
+        private sealed class PulseSequencer
         {
-            public bool Enabled;
             public uint Sequence;
             public ushort Timer;
-            public ushort Reload;
-            public volatile byte Output;
+            public ushort DutyCycle;
+            public bool Enabled;
+            
+            public byte Volume;
+            public bool Start;
+            public bool Loop;
+            public bool ConstantVolume;
 
-            public void Clock(SequencerAction function)
+            public ushort Length;
+
+            public bool SweepEnabled;
+            public byte SweepDivider;
+            public byte SweepBitShift;
+
+            private byte volumeDivider;
+            private byte decayCounter;
+            
+            private byte outputVolume;
+            private byte sequencerOutput;
+            
+            public void MainTick()
             {
-                if (!Enabled || Reload < 8)
-                {
-                    Output = 0;
-                    return;
-                }
-
                 Timer--;
                 if (Timer == 0xFFFF)
                 {
-                    Timer = (ushort)(Reload + 1);
-                    function(ref Sequence);
-                    Output = (byte)(Sequence & 0x01);
+                    Timer = DutyCycle;
+                    Sequence = ((Sequence & 0x0001) << 7) | ((Sequence & 0x00FE) >> 1);
+                    sequencerOutput = (byte)(Sequence & 0x01);
                 }
+            }
+            
+            public void QuarterTick()
+            {
+                if (Start)
+                {
+                    Start = false;
+                    decayCounter = 15;
+                    volumeDivider = Volume;
+                }
+                else
+                {
+                    if (volumeDivider > 0)
+                        volumeDivider--;
+                    else
+                    {
+                        volumeDivider = Volume;
+
+                        if (decayCounter > 0)
+                            decayCounter--;
+                        else if (Loop)
+                            decayCounter = 15;
+                    }
+                }
+
+                CalculateVolume();
+            }
+
+            public void HalfTick()
+            {
+                if (!Enabled)
+                    Length = 0;
+
+                if (Length > 0 && !Loop)
+                    Length--;
+
+                CalculateVolume();
+
+                //ushort targetCycle = DutyCycle >> SweepBitShift;
+            }
+
+            public int FinalOutput()
+            {
+                return sequencerOutput * outputVolume;
+            }
+
+            private void CalculateVolume()
+            {
+                if (!Enabled || DutyCycle < 8 || DutyCycle > 0x7FF)
+                    outputVolume = 0;
+                else if (!Loop && Length == 0)
+                    outputVolume = 0;
+                else
+                    outputVolume = ConstantVolume ? Volume : decayCounter;
             }
         }
         
+        #region SquareWaveGenerator class
         private sealed class SquareWaveGenerator : ISoundChannelGenerator
         {
             private const float PI = (float)Math.PI;
@@ -333,7 +467,9 @@ namespace System_NES
             }
             #endregion
         }
+        #endregion
 
+        #region TriangleWaveGenerator class
         private sealed class TriangleWaveGenerator : ISoundChannelGenerator
         {
             private const float PI = (float)Math.PI;
@@ -365,5 +501,6 @@ namespace System_NES
             }
             #endregion
         }
+        #endregion
     }
 }

@@ -36,7 +36,7 @@ namespace EmulatorUI
                 Text = display.Title;
         }
 
-        public int Scale
+        public int ScaleFactor
         {
             set => ClientSize = new Size(display.Size.Width * value, display.Size.Height * value);
         }

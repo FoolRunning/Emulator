@@ -1,4 +1,5 @@
 ﻿using System.Collections.Generic;
+using System.Linq;
 
 namespace SystemBase.Bus
 {
@@ -17,8 +18,19 @@ namespace SystemBase.Bus
         
         public void Reset()
         {
-            for (int i = 0; i < componentRanges.Count; i++)
-                components[i].Reset();
+            components.ForEach(comp => comp.Reset());
+        }
+
+        public void IRQ<T>() where T : IInterruptRequestHandler
+        {
+            IInterruptRequestHandler handler = components.OfType<T>().FirstOrDefault();
+            handler?.IRQ();
+        }
+
+        public void NMI<T>() where T : IInterruptRequestHandler
+        {
+            IInterruptRequestHandler handler = components.OfType<T>().FirstOrDefault();
+            handler?.NMI();
         }
         #endregion
 

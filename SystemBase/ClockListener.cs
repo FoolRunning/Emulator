@@ -6,6 +6,8 @@ namespace SystemBase
     public abstract class ClockListener : ITickProvider, IDisposable
     {
         #region Member variables
+        public static bool SynchronousClock = true;
+
         private readonly Thread tickThread;
         private readonly IClock clock;
         private volatile bool processNextTick;
@@ -24,8 +26,12 @@ namespace SystemBase
             tickThread = new Thread(TickLoop);
             tickThread.IsBackground = true;
             tickThread.Name = listenerDescription;
-
-            clock.ClockTick += Clock_ClockTick;
+            tickThread.Priority = ThreadPriority.AboveNormal;
+            
+            if (SynchronousClock)
+                clock.ClockTick += Clock_ClockTick_Synchronous;
+            else
+                clock.ClockTick += Clock_ClockTick;
         }
         #endregion
 
@@ -63,11 +69,16 @@ namespace SystemBase
         #endregion
 
         protected abstract void HandleSingleTick();
-
+        
         #region Event handlers
         private void Clock_ClockTick()
         {
-            while (processNextTick) // Prefer slowdown versus getting overwhelmed with ticks
+            processNextTick = true;
+        }
+
+        private void Clock_ClockTick_Synchronous()
+        {
+            while (processNextTick) // Wait until current tick is processed
             {
             }
 
@@ -81,10 +92,10 @@ namespace SystemBase
             processNextTick = false;
             while (run)
             {
-                if (!processNextTick) 
+                if (!processNextTick)
                     continue;
-
                 processNextTick = false;
+
                 Interlocked.Increment(ref totalTicks);
                 
                 if (enabled)

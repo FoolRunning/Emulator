@@ -9,25 +9,26 @@ namespace System_NES
     {
         private readonly CPU_2A03 cpu;
         private readonly Bus_16 bus;
-        private readonly RAM_16 ram;
         private readonly PPU ppu;
         private readonly APU apu;
         private readonly IController[] controllers = new IController[2];
         private Cartridge cartridge;
         private bool running;
+        private readonly SystemClock clock;
 
         public NES()
         {
             //Clock = new SystemClock(200000);
-            Clock = new SystemClock(5369318); // 1/4 speed of real system, but emulate-able
+            clock = new SystemClock(5369318); // 1/4 speed of real system, but emulate-able
             //Clock = new SystemClock(21477272); // True speed
             //Clock = new SystemClock(10000000);
+            //clock = new SystemClock(7150000);
 
             bus = new Bus_16();
-            cpu = new CPU_2A03(new ClockDivider(Clock, 3), bus); // 3x slower than PPU
-            ppu = new PPU(Clock, cpu);
-            ram = new RAM_16(2048);
-            apu = new APU(new ClockDivider(Clock, 6)); // 6x slower than PPU
+            RAM_16 ram = new RAM_16(2048);
+            ppu = new PPU(clock, bus);
+            cpu = new CPU_2A03(new ClockDivider(clock, 3), bus); // 3x slower than PPU
+            apu = new APU(new ClockDivider(clock, 3)); // 3x slower than PPU
             controllers[0] = new Controller(0x4016);
             controllers[1] = new Controller(0x4017);
 
@@ -44,13 +45,9 @@ namespace System_NES
         #region ISystemInfo implementation
         public IEnumerable<IController> Controllers => controllers;
 
-        public SystemClock Clock { get; }
-
         public ICPU CPU => cpu;
 
         public IBus Bus => bus;
-
-        public IRAM RAM => ram;
 
         public IPixelDisplay MainDisplay => ppu;
 
@@ -63,9 +60,9 @@ namespace System_NES
                 foreach (IPixelDisplay display in ppu.PatternTableDisplays)
                     yield return display;
 
-                yield return new TickCountDisplay(Clock,  
+                yield return new TickCountDisplay(clock,  
                     new[] { "Main", "PPU", "CPU", "APU" }, 
-                    new ITickProvider[] { Clock, ppu, cpu, apu });
+                    new ITickProvider[] { clock, ppu, cpu, apu });
             }
         }
         
@@ -76,7 +73,7 @@ namespace System_NES
             if (cartridge != null)
                 bus.RemoveComponent(cartridge);
 
-            cartridge = new Cartridge(filePath);
+            cartridge = new Cartridge(filePath, bus);
             bus.AddComponent(cartridge, new BusAddressRange_16(0x4020, 0xFFFF));
             
             ppu.SetCartridge(cartridge);
@@ -92,13 +89,13 @@ namespace System_NES
             apu.Start();
             ppu.Start();
             cpu.Start();
-            Clock.Start();
+            clock.Start();
             running = true;
         }
 
         public void Stop()
         {
-            Clock.Dispose();
+            clock.Dispose();
             cpu.Dispose();
             ppu.Dispose();
             apu.Dispose();

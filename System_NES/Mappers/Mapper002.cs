@@ -18,7 +18,7 @@
                 return true;
             }
 
-            newAddress = uint.MaxValue;
+            newAddress = 0;
             return false;
         }
         #endregion

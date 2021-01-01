@@ -12,15 +12,21 @@
         #region Mapper implementation
         public override MirrorMode MirrorMode => cartMirrorMode;
 
-        public override bool MapCPUAddressRead(ushort address, out uint newAddress)
+        public override void Reset()
         {
+            // Nothing to do
+        }
+
+        public override bool MapCPUAddressRead(ushort address, out uint newAddress, out byte data)
+        {
+            data = 0;
             if (address >= 0x8000 && address <= 0xFFFF)
             {
                 newAddress = address & cpuAddressMask;
                 return true;
             }
 
-            newAddress = uint.MaxValue;
+            newAddress = 0;
             return false;
         }
 
@@ -32,7 +38,7 @@
                 return true;
             }
 
-            newAddress = uint.MaxValue;
+            newAddress = 0;
             return false;
         }
 
@@ -44,7 +50,7 @@
                 return true;
             }
 
-            newAddress = uint.MaxValue;
+            newAddress = 0;
             return false;
         }
 
@@ -56,7 +62,7 @@
                 return true;
             }
 
-            newAddress = uint.MaxValue;
+            newAddress = 0;
             return false;
         }
         #endregion

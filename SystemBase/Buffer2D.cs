@@ -6,18 +6,18 @@ namespace SystemBase
     {
         private readonly ushort width;
         private readonly ushort height;
-        private readonly byte[] data;
+        private readonly RgbColor[] data;
 
         public Buffer2D(ushort width, ushort height)
         {
             this.width = width;
             this.height = height;
-            data = new byte[width * height];
+            data = new RgbColor[width * height];
         }
 
-        public byte[] InternalBuffer => data;
+        public RgbColor[] InternalBuffer => data;
 
-        public byte this[ushort x, ushort y]
+        public RgbColor this[ushort x, ushort y]
         {
             get => data[CalculateOffset(x, y)];
             set => data[CalculateOffset(x, y)] = value;

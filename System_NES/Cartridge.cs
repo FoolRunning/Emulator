@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Diagnostics;
 using System.IO;
 using System_NES.Mappers;
 using SystemBase;
@@ -29,10 +30,10 @@ namespace System_NES
     #region MirrorMode enumeration
     internal enum MirrorMode
     {
-        Horizontal,
-        Vertical,
-        OneScreenLo,
-        OneScreenHigh,
+        OneScreenLo = 0,
+        OneScreenHigh = 1,
+        Vertical = 2,
+        Horizontal = 3,
         Cartridge
     }
     #endregion
@@ -49,7 +50,7 @@ namespace System_NES
         #endregion
 
         #region Constructor
-        public Cartridge(string filePath)
+        public Cartridge(string filePath, IBus bus)
         {
             using (BinaryReader reader = new BinaryReader(new FileStream(filePath, FileMode.Open)))
             {
@@ -89,15 +90,18 @@ namespace System_NES
                 //    reader.Read(trainerData, 0, trainerData.Length);
                 //}
 
-                int prgSize = prgBankCount * Utils.sixteenKilobytes;
-                int chrSize = chrBankCount * Utils.eightKilobytes;
-                if (chrSize == 0)
-                    chrSize = Utils.eightKilobytes; // Cartridge has RAM?
-
+                int prgSize = prgBankCount * Utils.Kilo16;
                 prgData = new byte[prgSize];
-                reader.Read(prgData, 0, prgSize);
+                int countRead = reader.Read(prgData, 0, prgSize);
+                Debug.Assert(countRead == prgSize);
+
+                int chrSize = chrBankCount * Utils.Kilo8;
                 chrData = new byte[chrSize];
-                reader.Read(chrData, 0, chrSize);
+                countRead = reader.Read(chrData, 0, chrSize);
+                Debug.Assert(countRead == chrSize);
+
+                if (chrSize == 0)
+                    chrData = new byte[Utils.Kilo8]; // Cartridge has RAM?
 
                 MirrorMode cartMirrorMode = info.HasFlag(InfoFlags.Mirroring) ? MirrorMode.Vertical : MirrorMode.Horizontal;
                 if (mapperId == 0)
@@ -108,12 +112,14 @@ namespace System_NES
                     else if (prgBankCount > 2)
                         mapperId = 2;
                 }
-                    
+                
                 switch (mapperId)
                 {
                     case 0: mapper = new Mapper000(prgBankCount, chrBankCount, cartMirrorMode); break;
+                    case 1: mapper = new Mapper001(prgBankCount, chrBankCount, cartMirrorMode, info); break;
                     case 2: mapper = new Mapper002(prgBankCount, chrBankCount, cartMirrorMode); break;
                     case 3: mapper = new Mapper003(prgBankCount, chrBankCount, cartMirrorMode); break;
+                    case 4: mapper = new Mapper004(prgBankCount, chrBankCount, cartMirrorMode, bus); break;
                     default:
                         throw new NotImplementedException("Mapper " + mapperId + " is not implemented");
                 }
@@ -130,25 +136,23 @@ namespace System_NES
 
         public void Reset()
         {
-            // Nothing to do
+            mapper.Reset();
         }
 
         public void WriteDataFromBus(ushort address, byte data)
         {
-            if (mapper.MapCPUAddressWrite(address, data, out uint newAddress))
-            {
-                if (newAddress != Mapper.MapperHandled)
-                    prgData[newAddress] = data;
-            }
+            if (mapper.MapCPUAddressWrite(address, data, out uint newAddress) && newAddress != Mapper.MapperHandled)
+                prgData[newAddress] = data;
         }
 
         public byte ReadDataForBus(ushort address)
         {
-            if (mapper.MapCPUAddressRead(address, out uint newAddress))
-                return prgData[newAddress];
+            if (mapper.MapCPUAddressRead(address, out uint newAddress, out byte data))
+                return newAddress == Mapper.MapperHandled ? data : prgData[newAddress];
 
             //if (address >= 0x7000 && address <= 0x71FF)
             //    return trainerData?[address - 0x7000] ?? 0;
+            //Debug.Assert(address < 0x7000 || address > 0x71FF);
 
             return 0;
         }

@@ -6,13 +6,9 @@ namespace SystemBase
     {
         IEnumerable<IController> Controllers { get; }
 
-        SystemClock Clock { get; }
-
         ICPU CPU { get; }
         
         IBus Bus { get; }
-        
-        IRAM RAM { get; }
 
         IPixelDisplay MainDisplay { get; }
 

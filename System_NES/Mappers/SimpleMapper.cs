@@ -10,29 +10,34 @@ namespace System_NES.Mappers
 
         protected SimpleMapper(ushort prgBankCount, byte chrBankCount, MirrorMode cartMirrorMode) : base(prgBankCount, chrBankCount, cartMirrorMode)
         {
-            prgSelectedBankLow = 0;
-            prgSelectedBankHigh = (uint)(prgBankCount - 1);
-            chrSelectedBank = 0;
         }
 
         #region Mapper implementation
         public override MirrorMode MirrorMode => cartMirrorMode;
 
-        public override bool MapCPUAddressRead(ushort address, out uint newAddress)
+        public override void Reset()
         {
+            prgSelectedBankLow = 0;
+            prgSelectedBankHigh = (uint)(prgBankCount - 1);
+            chrSelectedBank = 0;
+        }
+
+        public override bool MapCPUAddressRead(ushort address, out uint newAddress, out byte data)
+        {
+            data = 0;
             if (address >= 0x8000 && address <= 0xBFFF)
             {
-                newAddress = (uint)((address & 0x3FFF) + prgSelectedBankLow * Utils.sixteenKilobytes);
+                newAddress = (uint)((address & 0x3FFF) + prgSelectedBankLow * Utils.Kilo16);
                 return true;
             }
 
             if (address >= 0xC000 && address <= 0xFFFF)
             {
-                newAddress = (uint)((address & 0x3FFF) + prgSelectedBankHigh * Utils.sixteenKilobytes);
+                newAddress = (uint)((address & 0x3FFF) + prgSelectedBankHigh * Utils.Kilo16);
                 return true;
             }
 
-            newAddress = uint.MaxValue;
+            newAddress = 0;
             return false;
         }
 
@@ -40,11 +45,11 @@ namespace System_NES.Mappers
         {
             if (address <= 0x1FFF)
             {
-                newAddress = address + chrSelectedBank * Utils.eightKilobytes;
+                newAddress = address + chrSelectedBank * Utils.Kilo8;
                 return true;
             }
 
-            newAddress = uint.MaxValue;
+            newAddress = 0;
             return false;
         }
 
@@ -56,7 +61,7 @@ namespace System_NES.Mappers
                 return true;
             }
 
-            newAddress = uint.MaxValue;
+            newAddress = 0;
             return false;
         }
         #endregion

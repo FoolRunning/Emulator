@@ -4,8 +4,10 @@ namespace SystemBase
 {
     public static class Utils
     {
-        public const ushort eightKilobytes = 8192;
-        public const ushort sixteenKilobytes = eightKilobytes * 2;
+        public const ushort Kilo4 = 4096;
+        public const ushort Kilo8 = Kilo4 * 2;
+        public const ushort Kilo16 = Kilo8 * 2;
+        public const ushort Kilo32 = Kilo16 * 2;
 
         private static readonly byte[] reverseBitLookup = { 0x0, 0x8, 0x4, 0xc, 0x2, 0xa, 0x6, 0xe, 0x1, 0x9, 0x5, 0xd, 0x3, 0xb, 0x7, 0xf };
 
@@ -44,9 +46,6 @@ namespace SystemBase
             b &= (byte)~maskValue;
         }
 
-        /// <summary>
-        /// 
-        /// </summary>
         /// <remarks>Taken from https://stackoverflow.com/a/2603254/4953232 </remarks>
         public static byte ReverseBits(this ref byte b)
         {
@@ -54,9 +53,6 @@ namespace SystemBase
             return (byte)((reverseBitLookup[b & 0x0F] << 4) | reverseBitLookup[b >> 4]);
         }
 
-        /// <summary>
-        /// 
-        /// </summary>
         /// <remarks>Taken from https://youtu.be/72dI7dB3ZvQ?t=2961 </remarks>
         public static float FastSine(float v)
         {

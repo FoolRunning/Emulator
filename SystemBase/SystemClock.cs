@@ -29,9 +29,11 @@ namespace SystemBase
             ticksPerClock = Stopwatch.Frequency / (double)frequency;
             ticksPerOneSecond = Stopwatch.Frequency;
 
+            Console.WriteLine("Ticks per clock: " + ticksPerClock);
+
             run = true;
             clockThread = new Thread(ClockLoop);
-            clockThread.Priority = ThreadPriority.AboveNormal;
+            clockThread.Priority = ThreadPriority.Highest;
             clockThread.IsBackground = true;
             clockThread.Name = "Clock";
         }
@@ -70,7 +72,6 @@ namespace SystemBase
                 throw new InvalidOperationException("Can not start clock with no tick listeners");
 
             timer.Start();
-
             ticksForNextClock = timer.ElapsedTicks + ticksPerClock;
             ticksForNextOneSecond = timer.ElapsedTicks + ticksPerOneSecond;
 
