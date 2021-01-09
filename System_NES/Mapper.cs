@@ -19,8 +19,8 @@
 
         public abstract void Reset();
 
-        public abstract bool MapCPUAddressRead(ushort address, out uint newAddress, out byte data);
-        public abstract bool MapCPUAddressWrite(ushort address, byte data, out uint newAddress);
+        public abstract bool MapCPUAddressRead(uint address, out uint newAddress, out byte data);
+        public abstract bool MapCPUAddressWrite(uint address, byte data, out uint newAddress);
         
         public abstract bool MapPPUAddressRead(ushort address, out uint newAddress);
         public abstract bool MapPPUAddressWrite(ushort address, byte data, out uint newAddress);

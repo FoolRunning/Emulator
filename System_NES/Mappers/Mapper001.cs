@@ -66,7 +66,7 @@ namespace System_NES.Mappers
             chrBankSelectedHi = 0;
         }
 
-        public override bool MapCPUAddressRead(ushort address, out uint newAddress, out byte data)
+        public override bool MapCPUAddressRead(uint address, out uint newAddress, out byte data)
         {
             if (address >= 0x6000 && address <= 0x7FFF)
             {
@@ -95,7 +95,7 @@ namespace System_NES.Mappers
             return false;
         }
 
-        public override bool MapCPUAddressWrite(ushort address, byte data, out uint newAddress)
+        public override bool MapCPUAddressWrite(uint address, byte data, out uint newAddress)
         {
             if (address >= 0x6000 && address <= 0x7FFF)
             {

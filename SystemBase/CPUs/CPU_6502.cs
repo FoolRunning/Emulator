@@ -2,12 +2,11 @@
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Text;
-using SystemBase.Bus;
 
 namespace SystemBase.CPUs
 {
     [SuppressMessage("ReSharper", "InconsistentNaming")]
-    public class CPU_6502 : ClockListener, ICPU, IBusComponent_16
+    public class CPU_6502 : ClockListener, ICPU, IBusComponent
     {
         #region Status enumeration
         private static class Status
@@ -37,7 +36,7 @@ namespace SystemBase.CPUs
         private readonly Op interruptOp;
         private readonly Op interruptNMIOp;
         private readonly Op[] opCodes;
-        private readonly Bus_16 bus;
+        private readonly SystemBus bus;
         private volatile InterruptType interruptRequested = InterruptType.None;
         private volatile bool resetRequested;
 
@@ -54,7 +53,7 @@ namespace SystemBase.CPUs
         #endregion
 
         #region Constructor
-        public CPU_6502(IClock clock, Bus_16 bus, long expectedTicksPerSecond) : base(clock, expectedTicksPerSecond, "CPU_6502")
+        public CPU_6502(IClock clock, SystemBus bus) : base(clock)
         {
             this.bus = bus ?? throw new ArgumentNullException(nameof(bus));
 
@@ -105,7 +104,7 @@ namespace SystemBase.CPUs
         }
         #endregion
 
-        #region IBusComponent_16 implementation
+        #region IBusComponent implementation
         public void Reset()
         {
             //Console.WriteLine();
@@ -122,12 +121,12 @@ namespace SystemBase.CPUs
             resetRequested = true;
         }
 
-        public virtual void WriteDataFromBus(ushort address, byte data)
+        public virtual void WriteDataFromBus(uint address, byte data)
         {
             throw new NotImplementedException("CPU does not accept reads/writes from the bus");
         }
 
-        public virtual byte ReadDataForBus(ushort address)
+        public virtual byte ReadDataForBus(uint address)
         {
             throw new NotImplementedException("CPU does not accept reads/writes from the bus");
         }
@@ -1284,7 +1283,6 @@ namespace SystemBase.CPUs
             registerStatus.SetOrClearFlag(Status.Negative, (result & 0x80) != 0);
             registerStatus.SetOrClearFlag(Status.Zero, (result & 0xFF) == 0);
         }
-
 
         private static bool DifferentPages(ushort add1, ushort add2)
         {

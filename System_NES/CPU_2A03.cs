@@ -1,7 +1,6 @@
 ﻿using System.Collections.Generic;
 using System.Diagnostics;
 using SystemBase;
-using SystemBase.Bus;
 using SystemBase.CPUs;
 
 namespace System_NES
@@ -9,7 +8,7 @@ namespace System_NES
     internal sealed class CPU_2A03 : CPU_6502
     {
         #region Member variables
-        private readonly Bus_16 bus;
+        private readonly SystemBus bus;
         private volatile bool doTransfer;
         private IEnumerator<ClockTick> transferOp;
         private bool isEvenClock = true;
@@ -17,14 +16,14 @@ namespace System_NES
         #endregion
 
         #region Constructor
-        public CPU_2A03(IClock clock, Bus_16 bus) : base(clock, bus, 1789773)
+        public CPU_2A03(IClock clock, SystemBus bus) : base(clock, bus)
         {
             this.bus = bus;
         }
         #endregion
 
         #region Overrides of CPU_6502
-        public override void WriteDataFromBus(ushort address, byte data)
+        public override void WriteDataFromBus(uint address, byte data)
         {
             Debug.Assert(address == 0x4014);
             dmaAddress = (ushort)(data << 8);

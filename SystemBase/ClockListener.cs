@@ -6,26 +6,25 @@ namespace SystemBase
     public abstract class ClockListener : ITickProvider, IDisposable
     {
         #region Member variables
-        public static bool SynchronousClock = true;
+        public static bool SynchronousClock = false;
 
         private readonly Thread tickThread;
         private readonly IClock clock;
-        private volatile bool processNextTick;
         private volatile bool run;
         private volatile bool enabled = true;
-        private long totalTicks;
+        private ulong requestedTickCount;
+        private ulong totalTicks;
         #endregion
 
         #region Constructor
-        protected ClockListener(IClock clock, long expectedTicksPerSecond, string listenerDescription)
+        protected ClockListener(IClock clock)
         {
             this.clock = clock;
-            ExpectedTicksPerSecond = expectedTicksPerSecond;
 
             run = true;
             tickThread = new Thread(TickLoop);
             tickThread.IsBackground = true;
-            tickThread.Name = listenerDescription;
+            tickThread.Name = GetType().Name;
             tickThread.Priority = ThreadPriority.AboveNormal;
             
             if (SynchronousClock)
@@ -63,9 +62,9 @@ namespace SystemBase
         #endregion
         
         #region ITickProvider implementation
-        public long TotalTickCount => Interlocked.Read(ref totalTicks);
+        public ulong TotalTickCount => totalTicks;
 
-        public long ExpectedTicksPerSecond { get; }
+        public ulong ExpectedTicksPerSecond => clock.ExpectedTicksPerSecond;
         #endregion
 
         protected abstract void HandleSingleTick();
@@ -73,30 +72,28 @@ namespace SystemBase
         #region Event handlers
         private void Clock_ClockTick()
         {
-            processNextTick = true;
+            requestedTickCount++;
         }
 
         private void Clock_ClockTick_Synchronous()
         {
-            while (processNextTick) // Wait until current tick is processed
+            while (requestedTickCount > totalTicks) // Wait until current tick is processed
             {
             }
 
-            processNextTick = true;
+            requestedTickCount++;
         }
         #endregion
 
         #region Main tick loop
         private void TickLoop()
         {
-            processNextTick = false;
             while (run)
             {
-                if (!processNextTick)
+                if (requestedTickCount <= totalTicks)
                     continue;
-                processNextTick = false;
 
-                Interlocked.Increment(ref totalTicks);
+                totalTicks++;
                 
                 if (enabled)
                     HandleSingleTick();

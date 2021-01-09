@@ -22,7 +22,7 @@ namespace System_NES.Mappers
             chrSelectedBank = 0;
         }
 
-        public override bool MapCPUAddressRead(ushort address, out uint newAddress, out byte data)
+        public override bool MapCPUAddressRead(uint address, out uint newAddress, out byte data)
         {
             data = 0;
             if (address >= 0x8000 && address <= 0xBFFF)

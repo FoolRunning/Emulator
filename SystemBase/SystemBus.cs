@@ -1,21 +1,30 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 using System.Linq;
 
-namespace SystemBase.Bus
+namespace SystemBase
 {
     /// <summary>
-    /// Represents a 16-bit bus
+    /// Represents a system data bus with 32-bit address and 8-bit data capabilities
     /// </summary>
-    public sealed class Bus_16 : IBus
+    public sealed class SystemBus
     {
         #region Member variables
-        private readonly List<BusAddressRange_16> componentRanges = new List<BusAddressRange_16>();
-        private readonly List<IBusComponent_16> components = new List<IBusComponent_16>();
+        private readonly List<BusAddressRange> componentRanges = new List<BusAddressRange>();
+        private readonly List<IBusComponent> components = new List<IBusComponent>();
+        private readonly uint maxAddress;
         #endregion
 
-        #region IBus implementation
+        public SystemBus(uint maxAddress)
+        {
+            this.maxAddress = maxAddress;
+        }
+
+        #region Properties
         public IEnumerable<IBusComponent> AllComponents => components;
-        
+        #endregion
+
+        #region Public methods
         public void Reset()
         {
             components.ForEach(comp => comp.Reset());
@@ -32,11 +41,12 @@ namespace SystemBase.Bus
             IInterruptRequestHandler handler = components.OfType<T>().FirstOrDefault();
             handler?.NMI();
         }
-        #endregion
 
-        #region Public methods
         public void WriteData(ushort address, byte data)
         {
+            if (address > maxAddress)
+                throw new ArgumentOutOfRangeException(nameof(address));
+
             for (int i = 0; i < componentRanges.Count; i++)
             {
                 if (componentRanges[i].InRange(address))
@@ -46,6 +56,9 @@ namespace SystemBase.Bus
 
         public byte ReadData(ushort address)
         {
+            if (address > maxAddress)
+                throw new ArgumentOutOfRangeException(nameof(address));
+
             for (int i = 0; i < componentRanges.Count; i++)
             {
                 if (componentRanges[i].InRange(address))
@@ -55,13 +68,13 @@ namespace SystemBase.Bus
             return 0;
         }
 
-        public void AddComponent(IBusComponent_16 component, BusAddressRange_16 addressRange)
+        public void AddComponent(IBusComponent component, BusAddressRange addressRange)
         {
             componentRanges.Add(addressRange);
             components.Add(component);
         }
 
-        public void RemoveComponent(IBusComponent_16 component)
+        public void RemoveComponent(IBusComponent component)
         {
             int index = components.IndexOf(component);
             if (index < 0) 
@@ -73,19 +86,22 @@ namespace SystemBase.Bus
         #endregion
     }
 
-    #region BusAddressRange_16 structure
-    public readonly struct BusAddressRange_16
+    #region BusAddressRange structure
+    public sealed class BusAddressRange
     {
-        private readonly ushort start;
-        private readonly ushort end;
+        private readonly uint start;
+        private readonly uint end;
 
-        public BusAddressRange_16(ushort start, ushort end)
+        public BusAddressRange(uint start, uint end)
         {
+            if (start > end)
+                throw new ArgumentException("start must be less than or equal to end");
+
             this.start = start;
             this.end = end;
         }
 
-        public bool InRange(ushort val)
+        public bool InRange(uint val)
         {
             return start <= val && val <= end;
         }

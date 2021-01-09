@@ -9,7 +9,7 @@
         }
 
         #region SimpleMapper implementation
-        public override bool MapCPUAddressWrite(ushort address, byte data, out uint newAddress)
+        public override bool MapCPUAddressWrite(uint address, byte data, out uint newAddress)
         {
             if (address >= 0x8000 && address <= 0xFFFF)
             {

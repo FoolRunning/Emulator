@@ -1,7 +1,6 @@
 ﻿using System;
 using System.Drawing;
 using System.Text;
-using System.Threading;
 
 namespace SystemBase
 {
@@ -10,8 +9,8 @@ namespace SystemBase
         #region Member variables
         private readonly ITickProvider[] tickProviders;
         private readonly string[] titles;
-        private readonly long[] prevTickCount;
-        private readonly long[] ticksInOneSecond;
+        private readonly ulong[] prevTickCount;
+        private readonly ulong[] ticksInOneSecond;
         #endregion
 
         #region Constructor
@@ -20,8 +19,8 @@ namespace SystemBase
             this.tickProviders = tickProviders ?? throw new ArgumentNullException(nameof(tickProviders));
             this.titles = titles;
 
-            prevTickCount = new long[tickProviders.Length];
-            ticksInOneSecond = new long[tickProviders.Length];
+            prevTickCount = new ulong[tickProviders.Length];
+            ticksInOneSecond = new ulong[tickProviders.Length];
 
             clock.OneSecondTick += Clock_OneSecondTick;
         }
@@ -41,7 +40,7 @@ namespace SystemBase
                 StringBuilder bldr = new StringBuilder();
                 for (int i = 0; i < tickProviders.Length; i++)
                 {
-                    long tios = Interlocked.Read(ref ticksInOneSecond[i]);
+                    ulong tios = ticksInOneSecond[i];
                     bldr.AppendLine($"{titles[i]}: {tios:###,###,###} ({tios * 100.0 / tickProviders[i].ExpectedTicksPerSecond:###.00}%)");
                 }
                 return bldr.ToString();
@@ -56,8 +55,8 @@ namespace SystemBase
         {
             for (int i = 0; i < tickProviders.Length; i++)
             {
-                long newTickCount = tickProviders[i].TotalTickCount;
-                Interlocked.Exchange(ref ticksInOneSecond[i], newTickCount - prevTickCount[i]);
+                ulong newTickCount = tickProviders[i].TotalTickCount;
+                ticksInOneSecond[i] = newTickCount - prevTickCount[i];
                 prevTickCount[i] = newTickCount;
             }
             FrameFinished?.Invoke();
@@ -67,8 +66,8 @@ namespace SystemBase
 
     public interface ITickProvider
     {
-        long TotalTickCount { get; }
+        ulong TotalTickCount { get; }
 
-        long ExpectedTicksPerSecond { get; }
+        ulong ExpectedTicksPerSecond { get; }
     }
 }

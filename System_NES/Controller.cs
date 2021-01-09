@@ -3,7 +3,7 @@ using SystemBase;
 
 namespace System_NES
 {
-    internal sealed class Controller : IBusComponent_16, IController
+    internal sealed class Controller : IBusComponent, IController
     {
         #region Button enumeration
         private static class Button
@@ -16,6 +16,7 @@ namespace System_NES
             public const byte Down   = (1 << 5);
             public const byte Left   = (1 << 6);
             public const byte Right  = (1 << 7);
+            public const byte Invalid = 0xFF;
         }
         #endregion
 
@@ -38,19 +39,19 @@ namespace System_NES
         }
         #endregion
 
-        #region IBusComponent_16 implementation
+        #region IBusComponent implementation
         public void Reset()
         {
             registerController = 0x00;
         }
 
-        public void WriteDataFromBus(ushort address, byte data)
+        public void WriteDataFromBus(uint address, byte data)
         {
             if (address == registerAddress)
                 registerController = currentButtonStatus;
         }
 
-        public byte ReadDataForBus(ushort address)
+        public byte ReadDataForBus(uint address)
         {
             if (address == registerAddress)
             {
@@ -67,14 +68,14 @@ namespace System_NES
         public void KeyboardKeyDown(ConsoleKey key)
         {
             byte button = ButtonForKey(key);
-            if (button != 0xFF)
+            if (button != Button.Invalid)
                 currentButtonStatus.SetFlag(button);
         }
 
         public void KeyboardKeyUp(ConsoleKey key)
         {
             byte button = ButtonForKey(key);
-            if (button != 0xFF)
+            if (button != Button.Invalid)
                 currentButtonStatus.ClearFlag(button);
         }
         #endregion
@@ -93,7 +94,7 @@ namespace System_NES
                 case ConsoleKey.LeftArrow: return Button.Left;
                 case ConsoleKey.RightArrow: return Button.Right;
 
-                default: return 0xFF;
+                default: return Button.Invalid;
             }
         }
         #endregion

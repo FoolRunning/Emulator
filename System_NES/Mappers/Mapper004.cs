@@ -4,9 +4,9 @@ namespace System_NES.Mappers
 {
     internal sealed class Mapper004 : Mapper
     {
-        private readonly IBus bus;
+        private readonly SystemBus bus;
 
-        public Mapper004(ushort prgBankCount, byte chrBankCount, MirrorMode cartMirrorMode, IBus bus) : 
+        public Mapper004(ushort prgBankCount, byte chrBankCount, MirrorMode cartMirrorMode, SystemBus bus) : 
             base(prgBankCount, chrBankCount, cartMirrorMode)
         {
             this.bus = bus;
@@ -18,14 +18,14 @@ namespace System_NES.Mappers
         {
         }
 
-        public override bool MapCPUAddressRead(ushort address, out uint newAddress, out byte data)
+        public override bool MapCPUAddressRead(uint address, out uint newAddress, out byte data)
         {
             newAddress = 0;
             data = 0;
             return false;
         }
 
-        public override bool MapCPUAddressWrite(ushort address, byte data, out uint newAddress)
+        public override bool MapCPUAddressWrite(uint address, byte data, out uint newAddress)
         {
             newAddress = 0;
             return false;

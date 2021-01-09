@@ -5,7 +5,7 @@ using SystemBase;
 
 namespace System_NES
 {
-    internal sealed class APU : ClockListener, IBusComponent_16, ISoundProvider
+    internal sealed class APU : ClockListener, IBusComponent, ISoundProvider
     {
         #region EnabledFlag enumeration
         private static class EnabledFlag
@@ -69,13 +69,13 @@ namespace System_NES
                 tndMixerLookup[i] = 163.67f / (24329.0f / i + 100.0f);
         }
 
-        public APU(IClock clock) : base(clock, CPUClockRate, "APU")
+        public APU(IClock clock) : base(clock)
         {
             frameCounter = FrameCounter4StepMode().GetEnumerator();
         }
         #endregion
         
-        #region IBusComponent_16 implementation
+        #region IBusComponent implementation
         public void Reset()
         {
             pulse1Sequencer.Enabled = false;
@@ -96,7 +96,7 @@ namespace System_NES
             //triangleGenerator.DutyCycle = 0.5f;
         }
 
-        public void WriteDataFromBus(ushort address, byte data)
+        public void WriteDataFromBus(uint address, byte data)
         {
             switch (address)
             {
@@ -187,7 +187,7 @@ namespace System_NES
             }
         }
 
-        public byte ReadDataForBus(ushort address)
+        public byte ReadDataForBus(uint address)
         {
             if (address == 0x4015)
                 return 0;
@@ -217,9 +217,9 @@ namespace System_NES
 
         protected override void HandleSingleTick()
         {
-            isEvenTick = !isEvenTick;
-            if (!isEvenTick) // Most of the APU operates 1/2 the speed of the CPU
-                return;
+            //isEvenTick = !isEvenTick;
+            //if (!isEvenTick) // Most of the APU operates 1/2 the speed of the CPU
+            //    return;
 
             if (!frameCounter.MoveNext())
             {

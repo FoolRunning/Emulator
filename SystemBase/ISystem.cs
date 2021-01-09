@@ -8,7 +8,7 @@ namespace SystemBase
 
         ICPU CPU { get; }
         
-        IBus Bus { get; }
+        SystemBus Bus { get; }
 
         IPixelDisplay MainDisplay { get; }
 

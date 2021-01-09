@@ -1,12 +1,11 @@
 ﻿using System;
-using SystemBase.Bus;
 
-namespace SystemBase.RAM
+namespace SystemBase
 {
     /// <summary>
-    /// Random access memory (RAM) for a 32-bit bus
+    /// Random access memory (RAM)
     /// </summary>
-    public sealed class RAM_32 : IRAM, IBusComponent_32
+    public sealed class RAM : IBusComponent
     {
         #region Member variables
         private readonly byte[] bytes;
@@ -14,7 +13,7 @@ namespace SystemBase.RAM
         #endregion
 
         #region Constructor
-        public RAM_32(uint size)
+        public RAM(uint size)
         {
             size = Utils.NearestPowerOf2(size);
             addressMask = size - 1;
@@ -22,11 +21,11 @@ namespace SystemBase.RAM
         }
         #endregion
 
-        #region IBusComponent_32 implementation
+        #region IBusComponent implementation
         public void Dispose()
         {
         }
-        
+
         public void Reset()
         {
             Array.Clear(bytes, 0, bytes.Length);
@@ -34,19 +33,12 @@ namespace SystemBase.RAM
 
         public void WriteDataFromBus(uint address, byte data)
         {
-            address &= addressMask;
-            bytes[address] = data;
+            bytes[address & addressMask] = data;
         }
 
         public byte ReadDataForBus(uint address)
         {
-            address &= addressMask;
-            return bytes[address];
-        }
-
-        public void Attached(Bus_32 bus)
-        {
-            // Nothing to do
+            return bytes[address & addressMask];
         }
         #endregion
     }

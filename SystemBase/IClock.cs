@@ -2,7 +2,7 @@
 
 namespace SystemBase
 {
-    public interface IClock : IDisposable
+    public interface IClock : ITickProvider, IDisposable
     {
         event Action ClockTick;
     }

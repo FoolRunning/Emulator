@@ -4,18 +4,20 @@ namespace SystemBase
 {
     public sealed class ClockDivider : IClock
     {
+        private readonly IClock parentClock;
         private readonly uint clockDivisor;
         private uint parentTicksBeforeTick;
 
-        public ClockDivider(IClock clock, uint clockDivisor)
+        public ClockDivider(IClock parentClock, uint clockDivisor)
         {
             if (clockDivisor == 0)
                 throw new ArgumentException("clockDivisor not valid");
 
+            this.parentClock = parentClock;
             this.clockDivisor = clockDivisor;
             parentTicksBeforeTick = clockDivisor;
 
-            clock.ClockTick += Clock_ClockTick;
+            parentClock.ClockTick += Clock_ClockTick;
         }
 
         public void Dispose()
@@ -23,6 +25,10 @@ namespace SystemBase
         }
 
         public event Action ClockTick;
+
+        public ulong TotalTickCount => parentClock.TotalTickCount / clockDivisor;
+        
+        public ulong ExpectedTicksPerSecond => parentClock.ExpectedTicksPerSecond / clockDivisor;
 
         private void Clock_ClockTick()
         {

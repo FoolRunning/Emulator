@@ -49,7 +49,10 @@ namespace EmulatorUI
         private void UpdateDisplayData()
         {
             if (display is ITextDisplay textDisplay)
+            {
+                txtDebugText.ForeColor = textDisplay.Color;
                 txtDebugText.Text = textDisplay.Text;
+            }
         }
     }
 }

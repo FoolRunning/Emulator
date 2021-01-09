@@ -4,7 +4,7 @@ using System.Threading;
 
 namespace SystemBase
 {
-    public sealed class SystemClock : IClock, ITickProvider
+    public sealed class SystemClock : IClock
     {
         #region Events/Member variables
         public event Action OneSecondTick;
@@ -17,11 +17,11 @@ namespace SystemBase
         private volatile bool run;
         private double ticksForNextClock;
         private long ticksForNextOneSecond;
-        private long totalTicks;
+        private ulong totalTicks;
         #endregion
 
         #region Constructor
-        public SystemClock(long frequency)
+        public SystemClock(ulong frequency)
         {
             timer = new Stopwatch();
 
@@ -35,7 +35,7 @@ namespace SystemBase
             clockThread = new Thread(ClockLoop);
             clockThread.Priority = ThreadPriority.Highest;
             clockThread.IsBackground = true;
-            clockThread.Name = "Clock";
+            clockThread.Name = GetType().Name;
         }
         #endregion
 
@@ -53,9 +53,9 @@ namespace SystemBase
         #endregion
 
         #region ITickProvider implementation
-        public long TotalTickCount => Interlocked.Read(ref totalTicks);
+        public ulong TotalTickCount => totalTicks;
 
-        public long ExpectedTicksPerSecond { get; }
+        public ulong ExpectedTicksPerSecond { get; }
         #endregion
 
         #region Public methods
@@ -81,7 +81,7 @@ namespace SystemBase
                 if (currentTicks < ticksForNextClock) 
                     continue;
 
-                Interlocked.Increment(ref totalTicks);
+                totalTicks++;
                 ticksForNextClock += ticksPerClock;
                 ClockTick.Invoke();
 
@@ -95,5 +95,9 @@ namespace SystemBase
             timer.Stop();
         }
         #endregion
+    }
+
+    public readonly struct ClockTick
+    {
     }
 }

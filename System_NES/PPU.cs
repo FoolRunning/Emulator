@@ -9,7 +9,7 @@ using System.Runtime.CompilerServices;
 namespace System_NES
 {
     [SuppressMessage("ReSharper", "InconsistentNaming")]
-    internal sealed class PPU : ClockListener, IBusComponent_16, IPixelDisplay
+    internal sealed class PPU : ClockListener, IBusComponent, IPixelDisplay
     {
         #region Status enumeration
         private static class Status
@@ -74,7 +74,7 @@ namespace System_NES
         };
 
         private readonly PatternTableDisp[] patternTableDisplay = new PatternTableDisp[2];
-        private readonly IBus bus;
+        private readonly SystemBus bus;
         private IEnumerator<ClockTick> renderFrame;
 #if DEBUG
         private int debugCycle = -2; // A couple ticks to get going
@@ -172,7 +172,7 @@ namespace System_NES
             }
         }
 
-        public PPU(IClock clock, IBus bus) : base(clock, 5369318, "PPU")
+        public PPU(IClock clock, SystemBus bus) : base(clock)
         {
             this.bus = bus;
 
@@ -201,7 +201,7 @@ namespace System_NES
         }
         #endregion
 
-        #region IBusComponent_16 implementation
+        #region IBusComponent implementation
         public void Reset()
         {
             Array.Clear(nameTable[0], 0, nameTable[0].Length);
@@ -224,7 +224,7 @@ namespace System_NES
             registerV.Reg = 0;
         }
 
-        public void WriteDataFromBus(ushort address, byte data)
+        public void WriteDataFromBus(uint address, byte data)
         {
             switch (address)
             {
@@ -281,7 +281,7 @@ namespace System_NES
             }
         }
 
-        public byte ReadDataForBus(ushort address)
+        public byte ReadDataForBus(uint address)
         {
             byte data;
             switch (address)

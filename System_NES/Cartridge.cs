@@ -38,7 +38,7 @@ namespace System_NES
     }
     #endregion
 
-    internal sealed class Cartridge : IBusComponent_16
+    internal sealed class Cartridge : IBusComponent
     {
         #region Member variables
         private readonly byte[] prgData;
@@ -50,7 +50,7 @@ namespace System_NES
         #endregion
 
         #region Constructor
-        public Cartridge(string filePath, IBus bus)
+        public Cartridge(string filePath, SystemBus bus)
         {
             using (BinaryReader reader = new BinaryReader(new FileStream(filePath, FileMode.Open)))
             {
@@ -129,7 +129,7 @@ namespace System_NES
 
         public MirrorMode Mirror => mapper.MirrorMode;
 
-        #region IBusComponent_16 implementation
+        #region IBusComponent implementation
         public void Dispose()
         {
         }
@@ -139,13 +139,13 @@ namespace System_NES
             mapper.Reset();
         }
 
-        public void WriteDataFromBus(ushort address, byte data)
+        public void WriteDataFromBus(uint address, byte data)
         {
             if (mapper.MapCPUAddressWrite(address, data, out uint newAddress) && newAddress != Mapper.MapperHandled)
                 prgData[newAddress] = data;
         }
 
-        public byte ReadDataForBus(ushort address)
+        public byte ReadDataForBus(uint address)
         {
             if (mapper.MapCPUAddressRead(address, out uint newAddress, out byte data))
                 return newAddress == Mapper.MapperHandled ? data : prgData[newAddress];
