@@ -5,6 +5,7 @@ namespace System_NES
 {
     public sealed class NES : ISystem
     {
+        #region Member variables
         private readonly CPU_2A03 cpu;
         private readonly SystemBus bus;
         private readonly PPU ppu;
@@ -13,18 +14,20 @@ namespace System_NES
         private Cartridge cartridge;
         private bool running;
         private readonly SystemClock clock;
+        #endregion
 
+        #region Constructor
         public NES()
         {
             //clock = new SystemClock(200000);
-            clock = new SystemClock(5369318); // 1/4 speed of real system, but emulate-able
+            clock = new SystemClock(5369318); // 1/4 speed of real system clock, but emulate-able
             //clock = new SystemClock(21477272); // True speed
 
             bus = new SystemBus(0xFFFF);
             RAM ram = new RAM(2048);
             ppu = new PPU(clock, bus);
             cpu = new CPU_2A03(new ClockDivider(clock, 3), bus); // 3x slower than PPU
-            apu = new APU(new ClockDivider(clock, 6)); // 6x slower than PPU
+            apu = new APU(new ClockDivider(clock, 3)); // 3x slower than PPU
             controllers[0] = new Controller(0x4016);
             controllers[1] = new Controller(0x4017);
 
@@ -37,6 +40,7 @@ namespace System_NES
             bus.AddComponent((Controller)controllers[1], new BusAddressRange(0x4017, 0x4017));
             bus.AddComponent(apu, new BusAddressRange(0x4017, 0x4017));
         }
+        #endregion
 
         #region ISystemInfo implementation
         public IEnumerable<IController> Controllers => controllers;

@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Threading;
 using SystemBase;
 
@@ -31,7 +32,7 @@ namespace System_NES
 
         private static readonly float[] pulseMixerLookup = new float[31];
         private static readonly float[] tndMixerLookup = new float[203];
-        private static readonly int[] lengthLookup = 
+        private static readonly byte[] lengthLookup = 
         {
             10, 254, 20,  2, 40,  4, 80,  6, 160,  8, 60, 10, 14, 12, 26, 14,
             12,  16, 24, 18, 48, 20, 96, 22, 192, 24, 72, 26, 16, 28, 32, 30
@@ -52,7 +53,7 @@ namespace System_NES
 
         private readonly PulseSequencer pulse1Sequencer = new PulseSequencer();
         private readonly PulseSequencer pulse2Sequencer = new PulseSequencer();
-        private readonly PulseSequencer triangleSequencer = new PulseSequencer();
+        private readonly TriangleSequencer triangleSequencer = new TriangleSequencer();
         //private readonly SquareWaveGenerator pulse1Generator = new SquareWaveGenerator();
         //private readonly SquareWaveGenerator pulse2Generator = new SquareWaveGenerator();
         //private readonly TriangleWaveGenerator triangleGenerator = new TriangleWaveGenerator();
@@ -113,7 +114,7 @@ namespace System_NES
                     pulse1Sequencer.DutyCycle = (ushort)((pulse1Sequencer.DutyCycle & 0xFF00) | data);
                     break;
                 case 0x4003:
-                    pulse1Sequencer.Length = (ushort)lengthLookup[(data & 0xF8) >> 3];
+                    pulse1Sequencer.Length = lengthLookup[(data & 0xF8) >> 3];
                     pulse1Sequencer.DutyCycle = (ushort)(((data & 0x07) << 8) | (pulse1Sequencer.DutyCycle & 0x00FF));
                     pulse1Sequencer.Timer = pulse1Sequencer.DutyCycle;
                     pulse1Sequencer.Start = true;
@@ -133,7 +134,7 @@ namespace System_NES
                     pulse2Sequencer.DutyCycle = (ushort)((pulse2Sequencer.DutyCycle & 0xFF00) | data);
                     break;
                 case 0x4007:
-                    pulse2Sequencer.Length = (ushort)lengthLookup[(data & 0xF8) >> 3];
+                    pulse2Sequencer.Length = lengthLookup[(data & 0xF8) >> 3];
                     pulse2Sequencer.DutyCycle = (ushort)(((data & 0x07) << 8) | (pulse2Sequencer.DutyCycle & 0x00FF));
                     pulse2Sequencer.Timer = pulse2Sequencer.DutyCycle;
                     pulse2Sequencer.Start = true;
@@ -141,6 +142,8 @@ namespace System_NES
                     break;
 
                 case 0x4008:
+                    triangleSequencer.Length = (byte)(data & 0x7F);
+                    triangleSequencer.Loop = (data & 0x80) != 0;
                     break;
                 case 0x4009:
                     break;
@@ -217,9 +220,11 @@ namespace System_NES
 
         protected override void HandleSingleTick()
         {
-            //isEvenTick = !isEvenTick;
-            //if (!isEvenTick) // Most of the APU operates 1/2 the speed of the CPU
-            //    return;
+            triangleSequencer.MainTick();
+            
+            isEvenTick = !isEvenTick;
+            if (!isEvenTick) // Most of the APU operates 1/2 the speed of the CPU
+                return;
 
             if (!frameCounter.MoveNext())
             {
@@ -332,8 +337,8 @@ namespace System_NES
             //int pulse2 = (int)((pulse2Generator.GetSample(0, globalTime, timeStep) + 1.0f) * 7.5f);
             //int triangle = (int)((triangleGenerator.GetSample(0, globalTime, timeStep) + 1.0f) * 7.5f);
             int pulse1 = pulse1Sequencer.FinalOutput();
-            int pulse2 = pulse2Sequencer.FinalOutput();
-            int triangle = 0; //(int)((triangleGenerator.GetSample(0, globalTime, timeStep) + 1.0f) * 7.5f);
+            int pulse2 = 0; //pulse2Sequencer.FinalOutput();
+            int triangle = 0; //triangleSequencer.FinalOutput(); //(int)((triangleGenerator.GetSample(0, globalTime, timeStep) + 1.0f) * 7.5f);
             const int noise = 0; // TODO
             const int dmc = 0; // TODO
 
@@ -357,7 +362,7 @@ namespace System_NES
             public bool Loop;
             public bool ConstantVolume;
 
-            public ushort Length;
+            public byte Length;
 
             public bool SweepEnabled;
             public byte SweepDivider;
@@ -434,12 +439,84 @@ namespace System_NES
                     outputVolume = ConstantVolume ? Volume : decayCounter;
             }
         }
+
+        private sealed class TriangleSequencer
+        {
+            private readonly byte[] sequence =
+            {
+                15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5 , 4 , 3 , 2 , 1 , 0 ,
+                0 , 1 , 2 , 3 , 4 , 5 , 6, 7, 8, 9, 10, 11, 12, 13, 14, 15
+            };
+
+            private byte sequenceIndex;
+            public ushort Timer;
+            public ushort DutyCycle;
+            public bool Enabled;
+            
+            public bool Start;
+            public bool Loop;
+
+            public ushort Length;
+
+            private byte outputVolume;
+            private byte sequencerOutput;
+            
+            public void MainTick()
+            {
+                Timer--;
+                if (Timer == 0xFFFF)
+                {
+                    Timer = DutyCycle;
+                    sequencerOutput = sequence[sequenceIndex];
+                    sequenceIndex = (byte)(++sequenceIndex % 32);
+                }
+            }
+            
+            public void QuarterTick()
+            {
+                if (Start)
+                {
+                    Start = false;
+                }
+                else
+                {
+                }
+
+                CalculateVolume();
+            }
+
+            public void HalfTick()
+            {
+                if (!Enabled)
+                    Length = 0;
+
+                if (Length > 0 && !Loop)
+                    Length--;
+
+                CalculateVolume();
+            }
+
+            public int FinalOutput()
+            {
+                return sequencerOutput * outputVolume;
+            }
+
+            private void CalculateVolume()
+            {
+                if (!Enabled || DutyCycle > 0x7FF)
+                    outputVolume = 0;
+                else if (!Loop && Length == 0)
+                    outputVolume = 0;
+                else
+                    outputVolume = 1;
+            }
+        }
         
         #region SquareWaveGenerator class
         private sealed class SquareWaveGenerator : ISoundChannelGenerator
         {
             private const float PI = (float)Math.PI;
-            private const int Harmonics = 20;
+            private const int Harmonics = 30;
             public volatile bool Enabled;
             public volatile float Frequency;
             public volatile float DutyCycle = 0.5f;

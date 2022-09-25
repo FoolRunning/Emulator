@@ -119,7 +119,7 @@ namespace System_NES
                     case 1: mapper = new Mapper001(prgBankCount, chrBankCount, cartMirrorMode, info); break;
                     case 2: mapper = new Mapper002(prgBankCount, chrBankCount, cartMirrorMode); break;
                     case 3: mapper = new Mapper003(prgBankCount, chrBankCount, cartMirrorMode); break;
-                    case 4: mapper = new Mapper004(prgBankCount, chrBankCount, cartMirrorMode, bus); break;
+                    //case 4: mapper = new Mapper004(prgBankCount, chrBankCount, cartMirrorMode, bus); break;
                     default:
                         throw new NotImplementedException("Mapper " + mapperId + " is not implemented");
                 }

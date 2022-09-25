@@ -248,7 +248,7 @@ namespace EmulatorUI
             //soundOutputDevice = new DirectSoundOut(100);
             soundOutputDevice = new WaveOutEvent();
             ((WaveOutEvent)soundOutputDevice).NumberOfBuffers = 2;
-            ((WaveOutEvent)soundOutputDevice).DesiredLatency = 100;
+            ((WaveOutEvent)soundOutputDevice).DesiredLatency = 150;
 
             //SignalGenerator gen = new SignalGenerator(44100, 1);
             //gen.Type = SignalGeneratorType.Square;
